@@ -29,12 +29,10 @@ jobs:
       - name: Prepare site
         run: |
           mkdir -p _site
-          # Copy config.example.js as config.js for deployment
-          cp config.example.js config.js
           cp -r \
             index.html login.html dashboard.html village.html \
             superset.html compare.html admin.html \
-            config.js \
+            config.js config.example.js \
             app/ styles/ data/ \
             _site/
           touch _site/.nojekyll
