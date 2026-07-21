@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sense of The House (SoTH)</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721">
+<script src="config.js?v=20260721"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="data/lgd.js?v=20260721"></script>
+<script src="app/core.js?v=20260721"></script>
+<script src="app/map.js?v=20260721"></script>
+<script src="app/maturity.js?v=20260721"></script>
+<script src="app/superset.js?v=20260721"></script>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="superset.html">Superset</a>
+    <a href="compare.html">Compare</a>
+    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+    <a href="login.html" id="nav-login">Login</a>
+    <button id="nav-logout" style="display:none" onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main class="app-content">
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <span>India — Partner & Parameter Coverage Map</span>
+      <span style="display:flex;gap:8px;font-size:12px;font-weight:400;">
+        <select id="map-theme-filter" onchange="soth.renderMap()">
+          <option value="">All Themes</option>
+        </select>
+        <select id="map-org-filter" onchange="soth.renderMap()">
+          <option value="">All Partners</option>
+        </select>
+        <select id="map-state-filter" onchange="soth.renderMap()">
+          <option value="">All States</option>
+        </select>
+      </span>
+    </div>
+    <div id="map" class="map-container" style="height:600px;"></div>
+  </div>
+
+  <div class="dashboard-grid" id="stats-ribbon"></div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="card-header">
+      <span>Partner Maturity Overview</span>
+      <span id="maturity-count" style="font-size:13px;font-weight:400;color:var(--gray-500);"></span>
+    </div>
+    <div id="maturity-charts" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;"></div>
+  </div>
+</main>
+
+<script>
+const soth = window.soth;
+
+soth.renderMap = async function () {
+  const themeFilter = document.getElementById('map-theme-filter')?.value || '';
+  const orgFilter = document.getElementById('map-org-filter')?.value || '';
+  const stateFilter = document.getElementById('map-state-filter')?.value || '';
+
+  const map = await soth.map.createMap('map');
+  if (!map) return;
+
+  soth.map.clearMarkers();
+
+  const orgs = await soth.data.organizations();
+  for (const org of orgs) {
+    if (orgFilter && org.id !== orgFilter) continue;
+    const villages = await soth.data.orgVillages(org.id);
+    const maturity = await soth.maturity.compute(org.id);
+    for (const ov of villages) {
+      const v = ov.villages;
+      if (!v || !v.lat || !v.lng) continue;
+      if (stateFilter && v.state !== stateFilter) continue;
+      // Theme filter: if a specific theme, only show villages that have captures for that theme
+      if (themeFilter) {
+        const caps = await soth.data.latestCaptures(org.id, v.id);
+        const hasTheme = caps.some(c => c.sub_parameters?.theme_id === themeFilter);
+        if (!hasTheme) continue;
+      }
+      const orgMaturity = maturity.themes.find(t => t.id === themeFilter)?.score ?? maturity.overall;
+      const color = soth.map.maturityColor(orgMaturity);
+      soth.map.addVillagePin(v, org, {
+        color,
+        maturity: orgMaturity,
+        detailUrl: `village.html?org=${org.id}&village=${v.id}`
+      });
+    }
+  }
+};
+
+soth.renderStats = async function () {
+  const orgs = await soth.data.organizations();
+  const allParams = await soth.data.allSubParams();
+  const { data: allVillages } = await soth.sb().from('villages').select('*').limit(1);
+  const { data: vCount } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
+
+  const ribbon = document.getElementById('stats-ribbon');
+  ribbon.innerHTML = `
+    <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
+    <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
+    <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
+    <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
+  `;
+};
+
+soth.renderMaturityCharts = async function () {
+  const orgs = await soth.data.organizations();
+  const container = document.getElementById('maturity-charts');
+  const countLabel = document.getElementById('maturity-count');
+
+  let totalScores = 0;
+  const cards = [];
+  for (const org of orgs) {
+    const m = await soth.maturity.compute(org.id);
+    totalScores += m.overall || 0;
+    const color = soth.map.maturityColor(m.overall);
+    cards.push(`<div class="card" style="padding:16px;">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${soth.ui.escapeHtml(org.name)}</div>
+      <div style="font-size:28px;font-weight:700;color:${color};">${m.overall}%</div>
+      <div class="maturity-bar"><div class="maturity-fill" style="width:${m.overall}%;background:${color};"></div></div>
+      <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">
+        ${m.themes.filter(t => t.score > 0).length}/${m.themes.length} themes active
+      </div>
+    </div>`);
+  }
+  container.innerHTML = cards.join('');
+  countLabel.textContent = `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%`;
+};
+
+// Populate filters
+(async function initPage() {
+  await soth.auth.init();
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').textContent = soth.currentUser.email;
+    document.getElementById('nav-login').href = 'dashboard.html';
+    document.getElementById('nav-logout').style.display = '';
+  }
+
+  // Theme filter
+  const themes = await soth.data.themes();
+  const themeSelect = document.getElementById('map-theme-filter');
+  themes.forEach(t => {
+    themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+  });
+
+  // Org filter
+  const orgs = await soth.data.organizations();
+  const orgSelect = document.getElementById('map-org-filter');
+  orgs.forEach(o => {
+    orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
+  });
+
+  // State filter
+  const stateSelect = document.getElementById('map-state-filter');
+  window.SOTH_LGD.states.forEach(s => {
+    stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
+  });
+
+  await soth.renderMap();
+  await soth.renderStats();
+  await soth.renderMaturityCharts();
+})();
+</script>
+</body>
+</html>

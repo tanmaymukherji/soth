@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Village — SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721">
+<script src="config.js?v=20260721"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="data/lgd.js?v=20260721"></script>
+<script src="app/core.js?v=20260721"></script>
+<script src="app/map.js?v=20260721"></script>
+<script src="app/maturity.js?v=20260721"></script>
+<script src="app/capture.js?v=20260721"></script>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="history-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div id="history-body"></div>
+    <div class="form-actions"><button class="btn btn-outline" onclick="document.getElementById('history-modal').classList.add('hidden')">Close</button></div>
+  </div>
+</div>
+<div id="propose-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3>Propose New Sub-Parameter for <span id="propose-theme-name"></span></h3>
+    <form id="propose-form">
+      <input type="hidden" id="propose-theme-id">
+      <label>Parameter Name *<input type="text" id="propose-name" required></label>
+      <label>Description<textarea id="propose-desc" rows="2"></textarea></label>
+      <label>Data Type<select id="propose-data-type">
+        <option value="qualitative">Qualitative (Yes/No/Partial)</option>
+        <option value="quantitative_scale">Quantitative (Scale)</option>
+        <option value="quantitative_numeric">Quantitative (Number)</option>
+        <option value="text">Text / Notes</option>
+      </select></label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Submit for Review</button>
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('propose-modal').classList.add('hidden')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="superset.html">Superset</a>
+    <a href="compare.html">Compare</a>
+    <button onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main class="app-content">
+  <div id="capture-content"></div>
+</main>
+
+<script>
+(async function () {
+  await soth.auth.init();
+  if (!soth.auth.requireAuth('login.html')) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const orgId = params.get('org');
+  const villageId = params.get('village');
+
+  if (orgId && villageId) {
+    const sb = soth.sb();
+    const { data: village } = await sb.from('villages').select('*').eq('id', villageId).single();
+    const name = village?.name || 'Village';
+    document.querySelector('.app-content').insertAdjacentHTML('afterbegin',
+      `<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+        <div><strong>${soth.ui.escapeHtml(name)}</strong>
+          ${village ? `<span style="color:var(--gray-500);font-size:13px;"> — ${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span>` : ''}
+        </div>
+        <a href="dashboard.html" class="btn btn-outline btn-small">← Back</a>
+      </div>`
+    );
+    await soth.capture.init(orgId, villageId);
+    document.getElementById('capture-content').id = '';
+    document.getElementById('capture-workspace').id = 'main-workspace';
+  } else {
+    document.querySelector('.app-content').innerHTML = '<p class="empty-state">No village selected. <a href="dashboard.html">Go to Dashboard</a></p>';
+  }
+})();
+
+// Override: ensure propose form works
+document.addEventListener('DOMContentLoaded', function () {
+  document.getElementById('propose-form')?.addEventListener('submit', function (e) {
+    e.preventDefault();
+    soth.capture.submitProposal();
+  });
+});
+</script>
+</body>
+</html>

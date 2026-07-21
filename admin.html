@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721">
+<script src="config.js?v=20260721"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="data/lgd.js?v=20260721"></script>
+<script src="app/core.js?v=20260721"></script>
+<script src="app/map.js?v=20260721"></script>
+<script src="app/maturity.js?v=20260721"></script>
+<script src="app/admin.js?v=20260721"></script>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="admin-modal" class="modal-overlay hidden"></div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="superset.html">Superset</a>
+    <a href="admin.html">Admin</a>
+    <span id="user-label" style="font-size:12px;color:var(--gray-400);"></span>
+    <button onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main>
+  <div class="admin-layout">
+    <nav class="admin-sidenav" id="admin-sidenav"></nav>
+    <div class="admin-main" id="admin-content">
+      <div class="loading-spinner">Loading admin panel...</div>
+    </div>
+  </div>
+</main>
+
+<script>
+(async function () {
+  await soth.auth.init();
+  if (!soth.auth.requireAdmin('login.html')) return;
+  document.getElementById('user-label').textContent = soth.currentUser?.email || '';
+  soth.admin.init();
+})();
+</script>
+</body>
+</html>

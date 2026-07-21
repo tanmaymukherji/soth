@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721">
+<script src="config.js?v=20260721"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="data/lgd.js?v=20260721"></script>
+<script src="app/core.js?v=20260721"></script>
+<script src="app/map.js?v=20260721"></script>
+<script src="app/maturity.js?v=20260721"></script>
+<script src="app/capture.js?v=20260721"></script>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="admin-modal" class="modal-overlay hidden"></div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="superset.html">Superset</a>
+    <a href="compare.html">Compare</a>
+    <a href="admin.html" id="nav-admin" style="display:none">Admin</a>
+    <span id="user-label" style="font-size:12px;color:var(--gray-400);"></span>
+    <button onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main class="app-content">
+  <h2 style="margin-bottom:4px;" id="dash-welcome">Partner Dashboard</h2>
+  <p style="color:var(--gray-500);margin-bottom:20px;" id="dash-subtitle">Select a village to capture data</p>
+
+  <!-- Village selector -->
+  <div class="village-selector" id="village-selector">
+    <div class="row">
+      <div class="search-box">
+        <input type="text" id="village-search" placeholder="Search your villages..." oninput="soth.filterVillageList(this.value)">
+      </div>
+      <button class="btn btn-primary" onclick="soth.showAddVillage()">+ Add Village</button>
+    </div>
+    <div id="village-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin-top:8px;"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="dashboard-grid" id="dash-stats"></div>
+
+  <!-- Maturity -->
+  <div class="card" style="margin-top:20px;">
+    <div class="card-header">
+      <span>Your Maturity by Theme</span>
+      <span id="overall-maturity" style="font-size:18px;font-weight:700;"></span>
+    </div>
+    <div id="theme-maturity-chart" style="height:300px;"></div>
+  </div>
+
+  <!-- Capture workspace placeholder -->
+  <div id="capture-workspace" style="margin-top:20px;display:none;">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <span>Village: <span id="active-village-name"></span></span>
+        <button class="btn btn-outline btn-small" onclick="document.getElementById('capture-workspace').style.display='none';document.getElementById('village-selector').style.display='';">← Change Village</button>
+      </div>
+    </div>
+    <div id="capture-content"></div>
+  </div>
+</main>
+
+<script>
+const soth = window.soth;
+
+soth.orgVillagesData = [];
+soth.themesData = [];
+
+soth.filterVillageList = function (query) {
+  const list = document.getElementById('village-list');
+  const q = query.toLowerCase();
+  const filtered = soth.orgVillagesData.filter(ov => {
+    const v = ov.villages;
+    return !v ? false : v.name.toLowerCase().includes(q) || v.district.toLowerCase().includes(q) || v.state.toLowerCase().includes(q);
+  });
+  list.innerHTML = filtered.map(ov => {
+    const v = ov.villages;
+    if (!v) return '';
+    return `<div class="card" style="padding:12px;cursor:pointer;" onclick="soth.openVillage('${ov.org_id}','${ov.village_id}','${soth.ui.escapeHtml(v.name)}')">
+      <strong>${soth.ui.escapeHtml(v.name)}</strong><br>
+      <span style="font-size:12px;color:var(--gray-500);">${soth.ui.escapeHtml(v.district)}, ${soth.ui.escapeHtml(v.state)}</span>
+    </div>`;
+  }).join('');
+};
+
+soth.openVillage = function (orgId, villageId, villageName) {
+  document.getElementById('village-selector').style.display = 'none';
+  document.getElementById('capture-workspace').style.display = 'block';
+  document.getElementById('active-village-name').textContent = villageName;
+  document.getElementById('capture-content').innerHTML = '<div class="loading-spinner">Loading...</div>';
+  soth.capture.init(orgId, villageId);
+};
+
+soth.showAddVillage = async function () {
+  const modal = document.getElementById('admin-modal');
+  const { data: states } = await soth.sb().from('villages').select('distinct state');
+  const stateOpts = (states || []).map(s => `<option value="${s.state}">${s.state}</option>`).join('');
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3>Add Village</h3>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">
+        You can add your operational village here. It will be geocoded automatically.
+      </p>
+      <form id="add-village-form">
+        <label>Village Name *<input type="text" id="av-name" required></label>
+        <label>Gram Panchayat<input type="text" id="av-gp"></label>
+        <label>Block<input type="text" id="av-block"></label>
+        <label>District *<input type="text" id="av-district" required placeholder="Enter district name"></label>
+        <label>State *<select id="av-state" required>${stateOpts}</select></label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Add Village</button>
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </form>
+    </div>`;
+  modal.classList.remove('hidden');
+
+  document.getElementById('add-village-form').onsubmit = async function (e) {
+    e.preventDefault();
+    const name = document.getElementById('av-name').value.trim();
+    const gp = document.getElementById('av-gp').value.trim();
+    const block = document.getElementById('av-block').value.trim();
+    const district = document.getElementById('av-district').value.trim();
+    const state = document.getElementById('av-state').value;
+
+    // Upsert village
+    const sb = soth.sb();
+    const { data: existing } = await sb.from('villages').select('*')
+      .eq('name', name).eq('district', district).eq('state', state).maybeSingle();
+    let villageId;
+    if (existing) {
+      villageId = existing.id;
+    } else {
+      const { data: newV } = await sb.from('villages').insert({ name, gram_panchayat: gp, block, district, state })
+        .select().single();
+      if (!newV) { soth.ui.showToast('Error creating village', 'error'); return; }
+      villageId = newV.id;
+      // Try geocoding
+      const result = await soth.map.geocodeVillage({ name, district, state });
+      if (result) {
+        await sb.from('villages').update({ lat: result.lat, lng: result.lng, geocode_source: 'mappls',
+          geocode_place_id: result.placeId, geocode_label: result.label, geocoded_at: new Date().toISOString(),
+          geocode_status: 'geocoded' }).eq('id', villageId);
+      }
+    }
+
+    // Link org to village
+    const { error } = await sb.from('org_villages').upsert({
+      org_id: soth.currentProfile.org_id, village_id: villageId, start_date: new Date().toISOString().split('T')[0], status: 'active'
+    }, { onConflict: 'org_id,village_id' });
+    if (error) { soth.ui.showToast(error.message, 'error'); return; }
+
+    soth.ui.showToast('Village added!', 'success');
+    modal.classList.add('hidden');
+    await soth.loadDashboard();
+  };
+};
+
+soth.loadDashboard = async function () {
+  if (!soth.currentProfile?.org_id) {
+    document.getElementById('dash-welcome').textContent = 'You are not linked to an organisation yet.';
+    document.getElementById('dash-subtitle').textContent = 'Contact an admin to assign you to an organisation.';
+    return;
+  }
+
+  const orgId = soth.currentProfile.org_id;
+  const orgs = await soth.data.organizations();
+  const org = orgs.find(o => o.id === orgId);
+
+  document.getElementById('dash-welcome').textContent = org ? org.name + ' Dashboard' : 'Partner Dashboard';
+
+  soth.orgVillagesData = await soth.data.orgVillages(orgId);
+  const totalVillages = soth.orgVillagesData.length;
+
+  // Show admin link
+  if (soth.auth.isAdmin()) {
+    document.getElementById('nav-admin').style.display = '';
+  }
+  document.getElementById('user-label').textContent = soth.currentUser?.email || '';
+
+  // Render village list
+  soth.filterVillageList('');
+
+  // Stats
+  const caps = await soth.data.latestCaptures(orgId, '');
+  const allCaps = caps.length;
+  const params = await soth.data.allSubParams();
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-value">${totalVillages}</div><div class="stat-label">Villages</div></div>
+    <div class="stat-card"><div class="stat-value">${allCaps}</div><div class="stat-label">Captures</div></div>
+    <div class="stat-card"><div class="stat-value">${params.length}</div><div class="stat-label">Total Parameters</div></div>
+    <div class="stat-card"><div class="stat-value">${new Date().toLocaleDateString('en-IN')}</div><div class="stat-label">Last Updated</div></div>
+  `;
+
+  // Maturity
+  const maturity = await soth.maturity.compute(orgId);
+  document.getElementById('overall-maturity').textContent = `Overall: ${maturity.overall}%`;
+  document.getElementById('overall-maturity').style.color = soth.map.maturityColor(maturity.overall);
+
+  const ctx = document.getElementById('theme-maturity-chart');
+  ctx.innerHTML = '<canvas id="maturity-canvas"></canvas>';
+  new Chart(document.getElementById('maturity-canvas'), {
+    type: 'radar',
+    data: {
+      labels: maturity.themes.map(t => t.name),
+      datasets: [{
+        label: 'Maturity %',
+        data: maturity.themes.map(t => t.score),
+        backgroundColor: 'rgba(37,99,235,0.1)',
+        borderColor: '#2563eb',
+        pointBackgroundColor: maturity.themes.map(t => soth.map.maturityColor(t.score)),
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+};
+
+(async function () {
+  await soth.auth.init();
+  if (!soth.auth.requireAuth('login.html')) return;
+  await soth.loadDashboard();
+})();
+</script>
+</body>
+</html>

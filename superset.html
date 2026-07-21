@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Superset — SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721">
+<script src="config.js?v=20260721"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="data/lgd.js?v=20260721"></script>
+<script src="app/core.js?v=20260721"></script>
+<script src="app/map.js?v=20260721"></script>
+<script src="app/maturity.js?v=20260721"></script>
+<script src="app/superset.js?v=20260721"></script>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="superset.html">Superset</a>
+    <a href="compare.html">Compare</a>
+    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+    <a href="login.html" id="nav-login">Login</a>
+    <button id="nav-logout" style="display:none" onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main class="app-content">
+  <div id="superset-container"></div>
+</main>
+
+<script>
+(async function () {
+  await soth.auth.init();
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').textContent = soth.currentUser.email;
+    document.getElementById('nav-login').href = 'dashboard.html';
+    document.getElementById('nav-logout').style.display = '';
+  }
+  await soth.superset.render('superset-container');
+})();
+</script>
+</body>
+</html>

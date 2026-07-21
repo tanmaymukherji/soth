@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compare — SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721">
+<script src="config.js?v=20260721"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="data/lgd.js?v=20260721"></script>
+<script src="app/core.js?v=20260721"></script>
+<script src="app/map.js?v=20260721"></script>
+<script src="app/maturity.js?v=20260721"></script>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="superset.html">Superset</a>
+    <a href="compare.html">Compare</a>
+    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+    <a href="login.html" id="nav-login">Login</a>
+    <button id="nav-logout" style="display:none" onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main class="app-content">
+  <h2 style="margin-bottom:16px;">Compare Partners</h2>
+  <div class="row" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:200px;">
+      <label>Partner A</label>
+      <select id="compare-org-a" onchange="soth.renderCompare()"></select>
+    </div>
+    <div style="flex:1;min-width:200px;">
+      <label>Partner B</label>
+      <select id="compare-org-b" onchange="soth.renderCompare()"></select>
+    </div>
+  </div>
+
+  <div id="compare-results" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;"></div>
+  <div id="compare-chart" style="margin-top:20px;height:350px;"></div>
+</main>
+
+<script>
+const soth = window.soth;
+
+soth.renderCompare = async function () {
+  const orgA = document.getElementById('compare-org-a').value;
+  const orgB = document.getElementById('compare-org-b').value;
+  if (!orgA || !orgB) return;
+
+  const maturityA = await soth.maturity.compute(orgA);
+  const maturityB = await soth.maturity.compute(orgB);
+
+  const orgs = await soth.data.organizations();
+  const nameA = orgs.find(o => o.id === orgA)?.name || 'A';
+  const nameB = orgs.find(o => o.id === orgB)?.name || 'B';
+
+  // Side by side cards
+  const container = document.getElementById('compare-results');
+  container.innerHTML = `
+    <div class="compare-card">
+      <h3 style="margin-bottom:12px;">${soth.ui.escapeHtml(nameA)}</h3>
+      <div style="font-size:36px;font-weight:700;color:${soth.map.maturityColor(maturityA.overall)};">${maturityA.overall}%</div>
+      <p style="color:var(--gray-500);">Overall Maturity</p>
+      <table class="param-table" style="margin-top:12px;">
+        ${maturityA.themes.map(t => `<tr><td>${soth.ui.escapeHtml(t.name)}</td><td style="font-weight:600;color:${soth.map.maturityColor(t.score)};">${t.score}%</td></tr>`).join('')}
+      </table>
+    </div>
+    <div class="compare-card">
+      <h3 style="margin-bottom:12px;">${soth.ui.escapeHtml(nameB)}</h3>
+      <div style="font-size:36px;font-weight:700;color:${soth.map.maturityColor(maturityB.overall)};">${maturityB.overall}%</div>
+      <p style="color:var(--gray-500);">Overall Maturity</p>
+      <table class="param-table" style="margin-top:12px;">
+        ${maturityB.themes.map(t => `<tr><td>${soth.ui.escapeHtml(t.name)}</td><td style="font-weight:600;color:${soth.map.maturityColor(t.score)};">${t.score}%</td></tr>`).join('')}
+      </table>
+    </div>
+  `;
+
+  // Radar chart
+  const chartDiv = document.getElementById('compare-chart');
+  chartDiv.innerHTML = '<canvas id="compare-canvas"></canvas>';
+  new Chart(document.getElementById('compare-canvas'), {
+    type: 'radar',
+    data: {
+      labels: maturityA.themes.map(t => t.name),
+      datasets: [
+        { label: nameA, data: maturityA.themes.map(t => t.score), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', pointBackgroundColor: '#2563eb' },
+        { label: nameB, data: maturityB.themes.map(t => t.score), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.1)', pointBackgroundColor: '#dc2626' }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } }
+    }
+  });
+};
+
+(async function () {
+  await soth.auth.init();
+  await soth.auth.init();
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').textContent = soth.currentUser.email;
+    document.getElementById('nav-login').href = 'dashboard.html';
+    document.getElementById('nav-logout').style.display = '';
+  }
+
+  const orgs = await soth.data.organizations();
+  const selA = document.getElementById('compare-org-a');
+  const selB = document.getElementById('compare-org-b');
+  orgs.forEach((o, i) => {
+    selA.innerHTML += `<option value="${o.id}" ${i === 0 ? 'selected' : ''}>${o.name}</option>`;
+    selB.innerHTML += `<option value="${o.id}" ${i === 1 ? 'selected' : ''}>${o.name}</option>`;
+  });
+  if (orgs.length >= 2) await soth.renderCompare();
+})();
+</script>
+</body>
+</html>
