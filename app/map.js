@@ -1,48 +1,50 @@
-// SoTH Map — Leaflet (free, no key) + Mappls geocoding (optional)
+// SoTH Map — BharatAtlas (MapLibre GL + PMTiles) + Mappls geocoding
 
 soth.map = {
   _map: null,
-  _markers: [],
-  _loaded: false,
-  _loadPromise: null,
+  _pinsGeoJSON: { type: 'FeatureCollection', features: [] },
+  _provider: 'bharatlas',
 
-  _loadLeaflet: async function () {
-    if (window.L) { soth.map._loaded = true; return true; }
-    if (soth.map._loadPromise) return soth.map._loadPromise;
+  _loadDeps: async function () {
+    if (window.maplibregl && window.pmtiles?.Protocol) return true;
 
-    soth.map._loadPromise = new Promise((resolve, reject) => {
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link');
-        link.id = 'leaflet-css';
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-      if (document.getElementById('leaflet-js')) { resolve(true); return; }
-      const script = document.createElement('script');
-      script.id = 'leaflet-js';
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.onload = () => { soth.map._loaded = true; resolve(true); };
-      script.onerror = () => { reject(new Error('Leaflet load failed')); };
-      document.head.appendChild(script);
+    // Load MapLibre CSS
+    if (!document.getElementById('maplibre-css')) {
+      const link = document.createElement('link');
+      link.id = 'maplibre-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+      document.head.appendChild(link);
+    }
+
+    // Load MapLibre JS + pmtiles in parallel
+    const load = (src) => new Promise((resolve, reject) => {
+      if (document.querySelector(`script[data-src="${src}"]`)) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = src;
+      s.dataset.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Failed: ' + src));
+      document.head.appendChild(s);
     });
-    return soth.map._loadPromise;
+
+    await Promise.all([
+      load('https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js'),
+      load('https://cdn.jsdelivr.net/npm/pmtiles@3.2.1/dist/pmtiles.js'),
+    ]);
+
+    if (window.pmtiles?.Protocol) {
+      soth.map._pmtilesProtocol = new window.pmtiles.Protocol();
+      window.maplibregl.addProtocol('pmtiles', soth.map._pmtilesProtocol.tile);
+    }
+    return true;
   },
 
   createMap: async function (containerId, center, zoom) {
+    await soth.map._loadDeps();
+
     const el = document.getElementById(containerId);
     if (!el) return null;
-
-    try {
-      await soth.map._loadLeaflet();
-    } catch (e) {
-      el.innerHTML = '<div class="map-empty">Failed to load map library. Check your internet connection.</div>';
-      return null;
-    }
-    if (!window.L) {
-      el.innerHTML = '<div class="map-empty">Map library not available.</div>';
-      return null;
-    }
 
     const cfg = soth.config();
     center = center || cfg.DEFAULT_MAP_CENTER || { lat: 22.9734, lng: 78.6569 };
@@ -52,14 +54,111 @@ soth.map = {
       soth.map._map.remove();
       soth.map._map = null;
     }
-    soth.map._markers.forEach(m => m?.remove?.());
-    soth.map._markers = [];
 
-    soth.map._map = L.map(containerId, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
-    }).addTo(soth.map._map);
+    soth.map._pinsGeoJSON = { type: 'FeatureCollection', features: [] };
+
+    // BharatAtlas PMTiles URLs
+    const BASE = 'https://pub-0429b8e3b5a946e69ea007df844a6f1c.r2.dev';
+    const ATTR = 'Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> · Atlas: <a href="https://bharatlas.com" target="_blank">BharatAtlas</a>';
+
+    soth.map._map = new window.maplibregl.Map({
+      container: containerId,
+      style: {
+        version: 8,
+        sources: {
+          'states': {
+            type: 'vector',
+            url: `pmtiles://${BASE}/admin/states/LGD_States.pmtiles`,
+            attribution: ATTR,
+          },
+          'districts': {
+            type: 'vector',
+            url: `pmtiles://${BASE}/admin/districts/LGD_Districts.pmtiles`,
+            attribution: ATTR,
+          },
+          'our-pins': {
+            type: 'geojson',
+            data: soth.map._pinsGeoJSON,
+          },
+        },
+        layers: [
+          { id: 'bg', type: 'background', paint: { 'background-color': '#f3f4f6' } },
+          {
+            id: 'states-fill', type: 'fill', source: 'states',
+            'source-layer': 'LGD_States',
+            paint: { 'fill-color': '#e2e8f0', 'fill-outline-color': '#94a3b8' },
+          },
+          {
+            id: 'states-border', type: 'line', source: 'states',
+            'source-layer': 'LGD_States',
+            paint: { 'line-color': '#64748b', 'line-width': 1 },
+          },
+          {
+            id: 'states-label', type: 'symbol', source: 'states',
+            'source-layer': 'LGD_States',
+            minzoom: 4,
+            layout: {
+              'text-field': ['get', 'STNAME'],
+              'text-size': 10,
+              'text-transform': 'uppercase',
+              'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+              'text-letter-spacing': 0.05,
+            },
+            paint: { 'text-color': '#475569', 'text-halo-color': '#fff', 'text-halo-width': 1.5 },
+          },
+          {
+            id: 'districts-border', type: 'line', source: 'districts',
+            'source-layer': 'LGD_Districts',
+            minzoom: 7,
+            paint: { 'line-color': '#cbd5e1', 'line-width': 0.5 },
+          },
+          {
+            id: 'our-pins-circle', type: 'circle', source: 'our-pins',
+            paint: {
+              'circle-radius': ['case', ['>=', ['zoom'], 10], 8, 6],
+              'circle-color': ['get', 'color'],
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 2,
+              'circle-opacity': 0.9,
+            },
+          },
+          {
+            id: 'our-pins-label', type: 'symbol', source: 'our-pins',
+            minzoom: 10,
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-size': 11,
+              'text-offset': [0, 1.5],
+              'text-anchor': 'top',
+            },
+            paint: {
+              'text-color': '#1e293b',
+              'text-halo-color': '#ffffff',
+              'text-halo-width': 1.5,
+            },
+          },
+        ],
+      },
+      center: [center.lng, center.lat],
+      zoom: zoom,
+      attributionControl: true,
+    });
+
+    // Add popups on click
+    soth.map._map.on('click', 'our-pins-circle', (e) => {
+      const p = e.features?.[0]?.properties;
+      if (!p) return;
+      new window.maplibregl.Popup({ offset: [0, -10] })
+        .setLngLat(e.lngLat)
+        .setHTML(p.popupHtml || `<strong>${p.name}</strong>`)
+        .addTo(soth.map._map);
+    });
+    soth.map._map.on('mouseenter', 'our-pins-circle', () => {
+      soth.map._map.getCanvas().style.cursor = 'pointer';
+    });
+    soth.map._map.on('mouseleave', 'our-pins-circle', () => {
+      soth.map._map.getCanvas().style.cursor = '';
+    });
 
     return soth.map._map;
   },
@@ -81,43 +180,52 @@ soth.map = {
         ${options.detailUrl ? `<br><a href="${options.detailUrl}" style="color:#2563eb;font-size:12px;">View details →</a>` : ''}
       </div>`;
 
-    const marker = L.circleMarker([lat, lng], {
-      radius: 7,
-      fillColor: pinColor,
-      color: '#fff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.85,
-    }).addTo(soth.map._map);
+    // Store in GeoJSON source
+    soth.map._pinsGeoJSON.features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: {
+        id: village.id,
+        name: village.name,
+        color: pinColor,
+        popupHtml,
+        detailUrl: options.detailUrl || '',
+        orgName: org?.name || '',
+      },
+    });
 
-    marker.bindPopup(popupHtml);
-    if (options.onClick) marker.on('click', options.onClick);
-    soth.map._markers.push(marker);
-    return marker;
+    // Update the source data on the map
+    const src = soth.map._map.getSource('our-pins');
+    if (src) src.setData(soth.map._pinsGeoJSON);
+
+    return village.id;
   },
 
   addVillages: function (villages, org) {
     if (!soth.map._map) return;
-    if (!villages || !villages.length) return;
+    if (!villages) return;
 
-    const boundsCoords = [];
-    villages.forEach(v => {
-      const pin = soth.map.addVillagePin(v, org);
-      if (pin && parseFloat(v.lat) && parseFloat(v.lng)) {
-        boundsCoords.push([parseFloat(v.lat), parseFloat(v.lng)]);
+    const bounds = new window.maplibregl.LngLatBounds();
+    let count = 0;
+    (villages).forEach(v => {
+      const id = soth.map.addVillagePin(v, org);
+      if (id) {
+        count++;
+        bounds.extend([parseFloat(v.lng), parseFloat(v.lat)]);
       }
     });
-    if (boundsCoords.length > 1 && soth.map._map?.fitBounds) {
-      soth.map._map.fitBounds(boundsCoords, { padding: [50, 50], maxZoom: 10 });
+    if (count > 1 && !bounds.isEmpty()) {
+      soth.map._map.fitBounds(bounds, { padding: 50, maxZoom: 10 });
     }
   },
 
   clearMarkers: function () {
-    soth.map._markers.forEach(m => m?.remove?.());
-    soth.map._markers = [];
+    soth.map._pinsGeoJSON = { type: 'FeatureCollection', features: [] };
+    const src = soth.map._map?.getSource('our-pins');
+    if (src) src.setData(soth.map._pinsGeoJSON);
   },
 
-  // Mappls geocoding via REST API (separate from SDK key)
+  // Mappls geocoding via REST API (kept from original)
   geocodeVillage: async function (village) {
     const key = soth.config().MAPPLS_MAP_KEY;
     if (!key) return null;
@@ -142,6 +250,33 @@ soth.map = {
       return null;
     } catch (e) {
       console.warn('Geocode error:', e);
+      return null;
+    }
+  },
+
+  // BharatAtlas geocoding — uses LGD village bounding box for approximate coords
+  geocodeViaBharatAtlas: async function (village) {
+    try {
+      const name = encodeURIComponent(village.name);
+      const resp = await fetch(
+        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${name}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax&limit=10`
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (!data?.data?.length) return null;
+      // Match by district+state
+      const match = data.data.find(d =>
+        d.dtname?.toLowerCase() === village.district?.toLowerCase() &&
+        d.stname?.toLowerCase() === village.state?.toLowerCase()
+      );
+      if (!match) return null;
+      // Compute approximate centroid from bounding box
+      const lat = ((parseFloat(match.ymin) || 0) + (parseFloat(match.ymax) || 0)) / 2;
+      const lng = ((parseFloat(match.xmin) || 0) + (parseFloat(match.xmax) || 0)) / 2;
+      if (!lat || !lng) return { found: true, lat: null, lng: null, source: 'bharatlas-nogeom' };
+      return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
+    } catch (e) {
+      console.warn('BharatAtlas geocode error:', e);
       return null;
     }
   },

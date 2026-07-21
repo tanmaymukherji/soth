@@ -468,18 +468,28 @@ soth.admin = {
     const sb = soth.sb();
     const { data: v } = await sb.from('villages').select('*').eq('id', villageId).single();
     if (!v) return;
-    const result = await soth.map.geocodeVillage(v);
-    if (result) {
+
+    // Try BharatAtlas first (approximate centroid from LGD village polygon)
+    let result = await soth.map.geocodeViaBharatAtlas(v);
+    let source = 'bharatlas';
+
+    // Fall back to Mappls geocoding
+    if (!result?.lat) {
+      result = await soth.map.geocodeVillage(v);
+      source = 'mappls';
+    }
+
+    if (result?.lat) {
       await sb.from('villages').update({
         lat: result.lat, lng: result.lng,
-        geocode_source: 'mappls', geocode_place_id: result.placeId,
-        geocode_label: result.label, geocoded_at: new Date().toISOString(),
+        geocode_source: source, geocode_place_id: result.placeId || '',
+        geocode_label: result.label || '', geocoded_at: new Date().toISOString(),
         geocode_status: 'geocoded'
       }).eq('id', villageId);
-      soth.ui.showToast('Geocoded!', 'success');
+      soth.ui.showToast(`Geocoded via ${source}!`, 'success');
     } else {
       await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', villageId);
-      soth.ui.showToast('Could not geocode', 'error');
+      soth.ui.showToast('Could not geocode with BharatAtlas or Mappls', 'error');
     }
     soth.admin.showSection('villages');
   },
@@ -563,6 +573,7 @@ soth.admin = {
 
     let html = '<div class="admin-section"><h2>Geocoding Queue (' + (pending?.length || 0) + ' remaining)</h2>';
     html += `<button class="btn btn-primary" onclick="soth.admin.batchGeocode()">Batch Geocode All</button>`;
+    html += `<p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Uses BharatAtlas LGD village boundaries first, then Mappls search as fallback.</p>`;
     if (!pending?.length) {
       html += '<p class="empty-state">All villages geocoded!</p>';
     } else {
@@ -592,12 +603,18 @@ soth.admin = {
 
     let count = 0;
     for (const v of (pending || [])) {
-      const result = await soth.map.geocodeVillage(v);
-      if (result) {
+      // Try BharatAtlas first (centroid from LGD village polygon bounds)
+      let result = await soth.map.geocodeViaBharatAtlas(v);
+      let source = 'bharatlas';
+      if (!result?.lat) {
+        result = await soth.map.geocodeVillage(v);
+        source = 'mappls';
+      }
+      if (result?.lat) {
         await sb.from('villages').update({
           lat: result.lat, lng: result.lng,
-          geocode_source: 'mappls', geocode_place_id: result.placeId,
-          geocode_label: result.label, geocoded_at: new Date().toISOString(),
+          geocode_source: source, geocode_place_id: result.placeId || '',
+          geocode_label: result.label || '', geocoded_at: new Date().toISOString(),
           geocode_status: 'geocoded'
         }).eq('id', v.id);
         count++;
@@ -605,7 +622,7 @@ soth.admin = {
         await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', v.id);
       }
       // Throttle
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 400));
     }
 
     if (btn) { btn.textContent = 'Batch Geocode All'; btn.disabled = false; }
