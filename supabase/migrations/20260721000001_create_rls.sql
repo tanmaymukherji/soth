@@ -107,12 +107,9 @@ CREATE POLICY "villages_admin_all" ON villages
   FOR ALL USING (public.is_soth_admin());
 
 -- --- Org-Villages ---
--- SELECT: own org or soth_admin
-CREATE POLICY "org_villages_select_own_or_admin" ON org_villages
-  FOR SELECT USING (
-    org_id = public.user_org_id()
-    OR public.is_soth_admin()
-  );
+-- Public SELECT (reference data — who works in which village is not sensitive)
+CREATE POLICY "org_villages_select_public" ON org_villages
+  FOR SELECT USING (true);
 -- INSERT/UPDATE/DELETE: own org_admin or soth_admin
 CREATE POLICY "org_villages_manage" ON org_villages
   FOR ALL USING (

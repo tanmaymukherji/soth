@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721">
-<script src="config.js?v=20260721"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260721b">
+<script src="config.js?v=20260721b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721"></script>
-<script src="app/core.js?v=20260721"></script>
-<script src="app/map.js?v=20260721"></script>
-<script src="app/maturity.js?v=20260721"></script>
-<script src="app/superset.js?v=20260721"></script>
+<script src="data/lgd.js?v=20260721b"></script>
+<script src="app/core.js?v=20260721b"></script>
+<script src="app/map.js?v=20260721b"></script>
+<script src="app/maturity.js?v=20260721b"></script>
+<script src="app/superset.js?v=20260721b"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -63,6 +63,34 @@
 <script>
 const soth = window.soth;
 
+soth._geocodedVillages = null;
+soth._orgVillageMap = null;
+
+// Load all geocoded villages + their org mappings in a single pass
+soth._loadMapData = async function () {
+  if (soth._geocodedVillages) return;
+  const sb = soth.sb();
+
+  const { data: orgVillages } = await sb.from('org_villages')
+    .select('org_id, village_id, villages(id, name, lat, lng, district, state)')
+    .eq('status', 'active');
+
+  const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
+
+  soth._orgMap = {};
+  (orgs || []).forEach(o => { soth._orgMap[o.id] = o; });
+
+  soth._orgVillageMap = {};
+  soth._geocodedVillages = {};
+  (orgVillages || []).forEach(ov => {
+    const v = ov.villages;
+    if (!v || v.lat == null || v.lng == null) return;
+    soth._geocodedVillages[v.id] = v;
+    if (!soth._orgVillageMap[v.id]) soth._orgVillageMap[v.id] = [];
+    soth._orgVillageMap[v.id].push(ov.org_id);
+  });
+};
+
 soth.renderMap = async function () {
   const themeFilter = document.getElementById('map-theme-filter')?.value || '';
   const orgFilter = document.getElementById('map-org-filter')?.value || '';
@@ -72,37 +100,31 @@ soth.renderMap = async function () {
   if (!map) return;
 
   soth.map.clearMarkers();
+  await soth._loadMapData();
 
-  const orgs = await soth.data.organizations();
-  for (const org of orgs) {
-    if (orgFilter && org.id !== orgFilter) continue;
-    const villages = await soth.data.orgVillages(org.id);
-    const maturity = await soth.maturity.compute(org.id);
-    for (const ov of villages) {
-      const v = ov.villages;
-      if (!v || !v.lat || !v.lng) continue;
-      if (stateFilter && v.state !== stateFilter) continue;
-      // Theme filter: if a specific theme, only show villages that have captures for that theme
-      if (themeFilter) {
-        const caps = await soth.data.latestCaptures(org.id, v.id);
-        const hasTheme = caps.some(c => c.sub_parameters?.theme_id === themeFilter);
-        if (!hasTheme) continue;
-      }
-      const orgMaturity = maturity.themes.find(t => t.id === themeFilter)?.score ?? maturity.overall;
-      const color = soth.map.maturityColor(orgMaturity);
-      soth.map.addVillagePin(v, org, {
-        color,
-        maturity: orgMaturity,
-        detailUrl: `village.html?org=${org.id}&village=${v.id}`
-      });
-    }
+  const villageIds = Object.keys(soth._geocodedVillages);
+  if (!villageIds.length) return;
+
+  for (const vid of villageIds) {
+    const v = soth._geocodedVillages[vid];
+    if (!v) continue;
+    if (stateFilter && v.state !== stateFilter) continue;
+
+    const orgIds = soth._orgVillageMap[vid] || [];
+    if (orgFilter && !orgIds.includes(orgFilter)) continue;
+
+    // Use the first org for display
+    const firstOrg = orgIds.length ? soth._orgMap[orgIds[0]] : null;
+    soth.map.addVillagePin(v, firstOrg, {
+      color: soth.map.themeColor(firstOrg?.name || ''),
+      detailUrl: orgIds.length ? `village.html?org=${orgIds[0]}&village=${vid}` : undefined
+    });
   }
 };
 
 soth.renderStats = async function () {
   const orgs = await soth.data.organizations();
   const allParams = await soth.data.allSubParams();
-  const { data: allVillages } = await soth.sb().from('villages').select('*').limit(1);
   const { data: vCount } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
 
   const ribbon = document.getElementById('stats-ribbon');
@@ -120,25 +142,26 @@ soth.renderMaturityCharts = async function () {
   const countLabel = document.getElementById('maturity-count');
 
   let totalScores = 0;
+  let scored = 0;
   const cards = [];
   for (const org of orgs) {
     const m = await soth.maturity.compute(org.id);
     totalScores += m.overall || 0;
+    if (m.overall) scored++;
     const color = soth.map.maturityColor(m.overall);
     cards.push(`<div class="card" style="padding:16px;">
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${soth.ui.escapeHtml(org.name)}</div>
       <div style="font-size:28px;font-weight:700;color:${color};">${m.overall}%</div>
       <div class="maturity-bar"><div class="maturity-fill" style="width:${m.overall}%;background:${color};"></div></div>
       <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">
-        ${m.themes.filter(t => t.score > 0).length}/${m.themes.length} themes active
+        ${m.overall ? m.themes.filter(t => t.score > 0).length + '/' + m.themes.length + ' themes active' : 'No capture data yet'}
       </div>
     </div>`);
   }
   container.innerHTML = cards.join('');
-  countLabel.textContent = `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%`;
+  countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet — partners need to log in and enter data';
 };
 
-// Populate filters
 (async function initPage() {
   await soth.auth.init();
   if (soth.currentUser) {
@@ -148,21 +171,18 @@ soth.renderMaturityCharts = async function () {
     document.getElementById('nav-logout').style.display = '';
   }
 
-  // Theme filter
   const themes = await soth.data.themes();
   const themeSelect = document.getElementById('map-theme-filter');
   themes.forEach(t => {
     themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
   });
 
-  // Org filter
   const orgs = await soth.data.organizations();
   const orgSelect = document.getElementById('map-org-filter');
   orgs.forEach(o => {
     orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
   });
 
-  // State filter
   const stateSelect = document.getElementById('map-state-filter');
   window.SOTH_LGD.states.forEach(s => {
     stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
