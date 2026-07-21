@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard — SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721c">
-<script src="config.js?v=20260721c"></script>
+<title>Dashboard â€” SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721d">
+<script src="config.js?v=20260721d"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721c"></script>
-<script src="app/core.js?v=20260721c"></script>
-<script src="app/map.js?v=20260721c"></script>
-<script src="app/maturity.js?v=20260721c"></script>
-<script src="app/capture.js?v=20260721c"></script>
+<script src="data/lgd.js?v=20260721d"></script>
+<script src="app/core.js?v=20260721d"></script>
+<script src="app/map.js?v=20260721d"></script>
+<script src="app/maturity.js?v=20260721d"></script>
+<script src="app/capture.js?v=20260721d"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -64,7 +64,7 @@
     <div class="card" style="margin-bottom:16px;">
       <div class="card-header">
         <span>Village: <span id="active-village-name"></span></span>
-        <button class="btn btn-outline btn-small" onclick="document.getElementById('capture-workspace').style.display='none';document.getElementById('village-selector').style.display='';">← Change Village</button>
+        <button class="btn btn-outline btn-small" onclick="document.getElementById('capture-workspace').style.display='none';document.getElementById('village-selector').style.display='';">â† Change Village</button>
       </div>
     </div>
     <div id="capture-content"></div>
@@ -72,8 +72,6 @@
 </main>
 
 <script>
-const soth = window.soth;
-
 soth.orgVillagesData = [];
 soth.themesData = [];
 
