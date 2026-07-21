@@ -139,18 +139,12 @@ CREATE TABLE IF NOT EXISTS captures (
   version INT DEFAULT 1
 );
 
--- Index for latest-value queries
+-- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_captures_lookup
   ON captures(org_id, village_id, sub_parameter_id, captured_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_captures_current
-  ON captures(org_id, village_id, sub_parameter_id)
-  WHERE captured_at = (
-    SELECT MAX(captured_at) FROM captures c2
-    WHERE c2.org_id = captures.org_id
-      AND c2.village_id = captures.village_id
-      AND c2.sub_parameter_id = captures.sub_parameter_id
-  );
+CREATE INDEX IF NOT EXISTS idx_captures_org_time
+  ON captures(org_id, captured_at DESC);
 
 -- 9. Audit log
 CREATE TABLE IF NOT EXISTS audit_log (
