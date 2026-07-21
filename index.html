@@ -69,26 +69,32 @@ soth._orgVillageMap = null;
 // Load all geocoded villages + their org mappings in a single pass
 soth._loadMapData = async function () {
   if (soth._geocodedVillages) return;
-  const sb = soth.sb();
+  try {
+    const sb = soth.sb();
+    if (!sb) { console.warn('SoTH: Supabase unavailable, map data not loaded'); return; }
 
-  const { data: orgVillages } = await sb.from('org_villages')
-    .select('org_id, village_id, villages(id, name, lat, lng, district, state)')
-    .eq('status', 'active');
+    const { data: orgVillages } = await sb.from('org_villages')
+      .select('org_id, village_id, villages(id, name, lat, lng, district, state)')
+      .eq('status', 'active');
 
-  const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
+    const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
 
-  soth._orgMap = {};
-  (orgs || []).forEach(o => { soth._orgMap[o.id] = o; });
+    soth._orgMap = {};
+    (orgs || []).forEach(o => { soth._orgMap[o.id] = o; });
 
-  soth._orgVillageMap = {};
-  soth._geocodedVillages = {};
-  (orgVillages || []).forEach(ov => {
-    const v = ov.villages;
-    if (!v || v.lat == null || v.lng == null) return;
-    soth._geocodedVillages[v.id] = v;
-    if (!soth._orgVillageMap[v.id]) soth._orgVillageMap[v.id] = [];
-    soth._orgVillageMap[v.id].push(ov.org_id);
-  });
+    soth._orgVillageMap = {};
+    soth._geocodedVillages = {};
+    (orgVillages || []).forEach(ov => {
+      const v = ov.villages;
+      if (!v || v.lat == null || v.lng == null) return;
+      soth._geocodedVillages[v.id] = v;
+      if (!soth._orgVillageMap[v.id]) soth._orgVillageMap[v.id] = [];
+      soth._orgVillageMap[v.id].push(ov.org_id);
+    });
+    console.log('SoTH: loaded', Object.keys(soth._geocodedVillages).length, 'geocoded villages');
+  } catch (e) {
+    console.error('SoTH: loadMapData error:', e);
+  }
 };
 
 soth.renderMap = async function () {
@@ -123,17 +129,22 @@ soth.renderMap = async function () {
 };
 
 soth.renderStats = async function () {
-  const orgs = await soth.data.organizations();
-  const allParams = await soth.data.allSubParams();
-  const { data: vCount } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
+  try {
+    const orgs = await soth.data.organizations();
+    const allParams = await soth.data.allSubParams();
+    const sb = soth.sb();
+    const { data: vCount } = sb ? await sb.from('villages').select('id', { count: 'exact', head: true }) : { data: null };
 
-  const ribbon = document.getElementById('stats-ribbon');
-  ribbon.innerHTML = `
-    <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
-    <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
-    <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
-    <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
-  `;
+    const ribbon = document.getElementById('stats-ribbon');
+    ribbon.innerHTML = `
+      <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
+      <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
+      <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
+      <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
+    `;
+  } catch (e) {
+    console.error('SoTH: renderStats error:', e);
+  }
 };
 
 soth.renderMaturityCharts = async function () {
@@ -163,34 +174,40 @@ soth.renderMaturityCharts = async function () {
 };
 
 (async function initPage() {
-  await soth.auth.init();
-  if (soth.currentUser) {
-    document.getElementById('nav-dashboard').style.display = '';
-    document.getElementById('nav-login').textContent = soth.currentUser.email;
-    document.getElementById('nav-login').href = 'dashboard.html';
-    document.getElementById('nav-logout').style.display = '';
+  try {
+    await soth.auth.init();
+    if (soth.currentUser) {
+      document.getElementById('nav-dashboard').style.display = '';
+      document.getElementById('nav-login').textContent = soth.currentUser.email;
+      document.getElementById('nav-login').href = 'dashboard.html';
+      document.getElementById('nav-logout').style.display = '';
+    }
+
+    const themes = await soth.data.themes();
+    const themeSelect = document.getElementById('map-theme-filter');
+    themes.forEach(t => {
+      themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+    });
+
+    const orgs = await soth.data.organizations();
+    const orgSelect = document.getElementById('map-org-filter');
+    orgs.forEach(o => {
+      orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
+    });
+
+    const stateSelect = document.getElementById('map-state-filter');
+    window.SOTH_LGD.states.forEach(s => {
+      stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
+    });
+
+    await soth.renderMap();
+    await soth.renderStats();
+    await soth.renderMaturityCharts();
+  } catch (e) {
+    console.error('SoTH: initPage error:', e);
+    document.getElementById('stats-ribbon').innerHTML =
+      '<div class="stat-card"><div class="stat-value">---</div><div class="stat-label">Error loading data. Check console.</div></div>';
   }
-
-  const themes = await soth.data.themes();
-  const themeSelect = document.getElementById('map-theme-filter');
-  themes.forEach(t => {
-    themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-  });
-
-  const orgs = await soth.data.organizations();
-  const orgSelect = document.getElementById('map-org-filter');
-  orgs.forEach(o => {
-    orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
-  });
-
-  const stateSelect = document.getElementById('map-state-filter');
-  window.SOTH_LGD.states.forEach(s => {
-    stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
-  });
-
-  await soth.renderMap();
-  await soth.renderStats();
-  await soth.renderMaturityCharts();
 })();
 </script>
 </body>

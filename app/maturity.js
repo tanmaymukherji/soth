@@ -3,21 +3,23 @@
 soth.maturity = {
   // Compute maturity for a single org across themes
   compute: async function (orgId) {
-    const sb = soth.sb();
-    const themes = await soth.data.themes();
-    const villages = await soth.data.orgVillages(orgId);
-    const villageIds = villages.map(v => v.village_id);
-    const totalVillages = villageIds.length;
-    if (!themes.length || !totalVillages) return { themes: [], overall: 0 };
+    try {
+      const sb = soth.sb();
+      if (!sb) return { themes: [], overall: 0 };
+      const themes = await soth.data.themes();
+      const villages = await soth.data.orgVillages(orgId);
+      const villageIds = villages.map(v => v.village_id);
+      const totalVillages = villageIds.length;
+      if (!themes.length || !totalVillages) return { themes: [], overall: 0 };
 
-    // Get all captures for this org
-    const { data: allCaps } = await sb.from('latest_captures').select('*')
-      .eq('org_id', orgId).in('village_id', villageIds);
-    const capMap = {};
-    (allCaps || []).forEach(c => {
-      if (!capMap[c.sub_parameter_id]) capMap[c.sub_parameter_id] = new Set();
-      capMap[c.sub_parameter_id].add(c.village_id);
-    });
+      // Get all captures for this org
+      const { data: allCaps } = await sb.from('latest_captures').select('*')
+        .eq('org_id', orgId).in('village_id', villageIds);
+      const capMap = {};
+      (allCaps || []).forEach(c => {
+        if (!capMap[c.sub_parameter_id]) capMap[c.sub_parameter_id] = new Set();
+        capMap[c.sub_parameter_id].add(c.village_id);
+      });
 
     // Count recent captures (last 90 days)
     const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString();
@@ -97,6 +99,10 @@ soth.maturity = {
       : 0;
 
     return { themes: finalScores, overall };
+    } catch (e) {
+      console.warn('SoTH: maturity.compute error:', e);
+      return { themes: [], overall: 0 };
+    }
   },
 
   // Get journey stage for a (org, village, param)

@@ -78,7 +78,8 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
       if (result.error) {
         soth.ui.showToast(result.error.message, 'error');
       } else {
-        window.location.href = 'dashboard.html';
+        const isAdmin = soth.currentProfile?.role === 'soth_admin';
+        window.location.href = isAdmin ? 'admin.html' : 'dashboard.html';
       }
     } else {
       if (password.length < 6) {

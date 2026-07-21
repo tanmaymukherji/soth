@@ -6,14 +6,19 @@ soth.config = () => window.APP_CONFIG || {};
 
 soth.initSupabase = function () {
   if (soth._sb) return soth._sb;
-  const cfg = soth.config();
-  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY || !window.supabase) {
-    console.warn('SoTH: Supabase config missing or SDK not loaded');
-    return null;
+  try {
+    const cfg = soth.config();
+    if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY || !window.supabase) {
+      console.warn('SoTH: Supabase config missing or SDK not loaded');
+      return null;
+    }
+    soth._sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, storageKey: 'soth_auth' }
+    });
+    console.log('SoTH: Supabase client created');
+  } catch (e) {
+    console.error('SoTH: Supabase init error:', e);
   }
-  soth._sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, storageKey: 'soth_auth' }
-  });
   return soth._sb;
 };
 
@@ -25,36 +30,58 @@ soth.currentUser = null;
 soth.currentProfile = null;
 
 soth.auth = {
+  _initCount: 0,
+
   init: async function () {
-    const sb = soth.sb();
-    if (!sb) return null;
-    const { data: { session } } = await sb.auth.getSession();
-    if (session?.user) {
-      soth.currentUser = session.user;
-      await soth.auth.loadProfile();
-    }
-    // Listen for changes
-    sb.auth.onAuthStateChange(async (event, session) => {
+    soth.auth._initCount++;
+    const attempt = soth.auth._initCount;
+    try {
+      const sb = soth.sb();
+      if (!sb) {
+        console.warn('SoTH: auth.init() #' + attempt + ' - no Supabase client');
+        return null;
+      }
+      const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
         soth.currentUser = session.user;
+        console.log('SoTH: session found for', session.user.email);
         await soth.auth.loadProfile();
       } else {
-        soth.currentUser = null;
-        soth.currentProfile = null;
+        console.log('SoTH: no session found');
       }
-      document.dispatchEvent(new CustomEvent('soth:authchange', {
-        detail: { user: soth.currentUser, profile: soth.currentProfile }
-      }));
-    });
-    return session;
+      sb.auth.onAuthStateChange(async (event, session) => {
+        console.log('SoTH: auth event', event, session?.user?.email);
+        if (session?.user) {
+          soth.currentUser = session.user;
+          await soth.auth.loadProfile();
+        } else {
+          soth.currentUser = null;
+          soth.currentProfile = null;
+        }
+        document.dispatchEvent(new CustomEvent('soth:authchange', {
+          detail: { user: soth.currentUser, profile: soth.currentProfile }
+        }));
+      });
+      return session;
+    } catch (e) {
+      console.error('SoTH: auth.init() #' + attempt + ' error:', e);
+      return null;
+    }
   },
 
   loadProfile: async function () {
-    if (!soth.currentUser) return null;
-    const sb = soth.sb();
-    const { data } = await sb.from('profiles').select('*').eq('id', soth.currentUser.id).maybeSingle();
-    soth.currentProfile = data || null;
-    return data;
+    try {
+      if (!soth.currentUser) return null;
+      const sb = soth.sb();
+      if (!sb) return null;
+      const { data } = await sb.from('profiles').select('*').eq('id', soth.currentUser.id).maybeSingle();
+      soth.currentProfile = data || null;
+      console.log('SoTH: profile loaded', soth.currentProfile?.role || 'none');
+      return data;
+    } catch (e) {
+      console.error('SoTH: loadProfile error:', e);
+      return null;
+    }
   },
 
   signUp: async function (email, password, fullName) {
@@ -70,35 +97,46 @@ soth.auth = {
   },
 
   signIn: async function (email, password) {
-    const sb = soth.sb();
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) return { error };
-    soth.currentUser = data.user;
-    await soth.auth.loadProfile();
-    return { data };
+    try {
+      const sb = soth.sb();
+      if (!sb) return { error: new Error('Supabase not configured') };
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) return { error };
+      soth.currentUser = data.user;
+      await soth.auth.loadProfile();
+      return { data };
+    } catch (e) {
+      console.error('SoTH: signIn error:', e);
+      return { error: e };
+    }
   },
 
   signOut: async function () {
-    const sb = soth.sb();
-    await sb.auth.signOut();
+    try {
+      const sb = soth.sb();
+      if (sb) await sb.auth.signOut();
+    } catch (e) { console.warn('SoTH: signOut error:', e); }
     soth.currentUser = null;
     soth.currentProfile = null;
   },
 
   ensureProfile: async function (user, fullName) {
-    // Upsert profile record
-    const sb = soth.sb();
-    const { data: existing } = await sb.from('profiles').select('id').eq('id', user.id).maybeSingle();
-    if (!existing) {
-      await sb.from('profiles').upsert({
-        id: user.id,
-        email: user.email,
-        full_name: fullName || user.user_metadata?.full_name || '',
-        role: user.email === (soth.config().BOOTSTRAP_ADMIN_EMAIL || '') ? 'soth_admin' : 'partner',
-        status: 'active'
-      }, { onConflict: 'id' });
+    try {
+      const sb = soth.sb();
+      if (!sb) return null;
+      const { data: existing } = await sb.from('profiles').select('id').eq('id', user.id).maybeSingle();
+      if (!existing) {
+        await sb.from('profiles').upsert({
+          id: user.id,
+          full_name: fullName || user.user_metadata?.full_name || '',
+          role: user.email === (soth.config().BOOTSTRAP_ADMIN_EMAIL || '') ? 'soth_admin' : 'partner',
+          status: 'active'
+        }, { onConflict: 'id' });
+      }
+      await soth.auth.loadProfile();
+    } catch (e) {
+      console.error('SoTH: ensureProfile error:', e);
     }
-    await soth.auth.loadProfile();
   },
 
   sendPasswordReset: async function (email) {
@@ -142,92 +180,124 @@ soth.auth = {
 // --- Data helpers ---
 
 soth.data = {
+  _sbOrNull: function () {
+    const sb = soth.sb();
+    if (!sb) console.warn('SoTH: Supabase not available for data query');
+    return sb;
+  },
+
   // Fetch active themes
   themes: async function () {
-    const sb = soth.sb();
-    const { data } = await sb.from('themes').select('*').eq('status', 'active')
-      .order('sort_order', { ascending: true }).order('name', { ascending: true });
-    return data || [];
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return [];
+      const { data } = await sb.from('themes').select('*').eq('status', 'active')
+        .order('sort_order', { ascending: true }).order('name', { ascending: true });
+      return data || [];
+    } catch (e) { console.warn('SoTH: themes error:', e); return []; }
   },
 
   // Fetch sub-parameters for a theme
   subParams: async function (themeId) {
-    const sb = soth.sb();
-    const { data } = await sb.from('sub_parameters').select('*')
-      .eq('status', 'active')
-      .eq('theme_id', themeId)
-      .order('name', { ascending: true });
-    return data || [];
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return [];
+      const { data } = await sb.from('sub_parameters').select('*')
+        .eq('status', 'active')
+        .eq('theme_id', themeId)
+        .order('name', { ascending: true });
+      return data || [];
+    } catch (e) { console.warn('SoTH: subParams error:', e); return []; }
   },
 
   // Fetch all sub-parameters (superset)
   allSubParams: async function () {
-    const sb = soth.sb();
-    const { data } = await sb.from('sub_parameters').select('*, themes(name)')
-      .eq('status', 'active')
-      .order('name');
-    return data || [];
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return [];
+      const { data } = await sb.from('sub_parameters').select('*, themes(name)')
+        .eq('status', 'active')
+        .order('name');
+      return data || [];
+    } catch (e) { console.warn('SoTH: allSubParams error:', e); return []; }
   },
 
   // Fetch villages for an org
   orgVillages: async function (orgId) {
-    const sb = soth.sb();
-    const { data } = await sb.from('org_villages').select('*, villages(*)')
-      .eq('org_id', orgId).eq('status', 'active');
-    return data || [];
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return [];
+      const { data } = await sb.from('org_villages').select('*, villages(*)')
+        .eq('org_id', orgId).eq('status', 'active');
+      return data || [];
+    } catch (e) { console.warn('SoTH: orgVillages error:', e); return []; }
   },
 
   // Fetch latest captures for org + village
   latestCaptures: async function (orgId, villageId) {
-    const sb = soth.sb();
-    const { data } = await sb.from('latest_captures').select('*')
-      .eq('org_id', orgId).eq('village_id', villageId);
-    return data || [];
+    try {
+      const sb = soth.sb();
+      if (!sb) return [];
+      let q = sb.from('latest_captures').select('*').eq('org_id', orgId);
+      if (villageId) q = q.eq('village_id', villageId);
+      const { data } = await q;
+      return data || [];
+    } catch (e) {
+      console.warn('SoTH: latestCaptures error:', e);
+      return [];
+    }
   },
 
   // Insert/update a capture
   saveCapture: async function (capture) {
-    const sb = soth.sb();
-    const record = {
-      org_id: capture.org_id,
-      village_id: capture.village_id,
-      sub_parameter_id: capture.sub_parameter_id,
-      value_text: capture.value_text || '',
-      value_numeric: capture.value_numeric || null,
-      value_scale: capture.value_scale != null ? capture.value_scale : null,
-      data_type: capture.data_type || 'qualitative',
-      evidence_url: capture.evidence_url || '',
-      captured_by: soth.currentUser?.id || null,
-      journey_stage: capture.journey_stage || 'baseline',
-      captured_at: new Date().toISOString()
-    };
-    const { data, error } = await sb.from('captures').insert(record).select().single();
-    // Audit
-    soth.audit.log('capture_create', 'captures', data?.id || '');
-    return { data, error };
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return { error: new Error('Supabase not available') };
+      const record = {
+        org_id: capture.org_id,
+        village_id: capture.village_id,
+        sub_parameter_id: capture.sub_parameter_id,
+        value_text: capture.value_text || '',
+        value_numeric: capture.value_numeric || null,
+        value_scale: capture.value_scale != null ? capture.value_scale : null,
+        data_type: capture.data_type || 'qualitative',
+        evidence_url: capture.evidence_url || '',
+        captured_by: soth.currentUser?.id || null,
+        journey_stage: capture.journey_stage || 'baseline',
+        captured_at: new Date().toISOString()
+      };
+      const { data, error } = await sb.from('captures').insert(record).select().single();
+      if (data) soth.audit.log('capture_create', 'captures', data.id);
+      return { data, error };
+    } catch (e) { console.warn('SoTH: saveCapture error:', e); return { error: e }; }
   },
 
-  // Upsert capture (replace latest for org/village/param)
   upsertCapture: async function (capture) {
-    return soth.data.saveCapture(capture); // append-only
+    return soth.data.saveCapture(capture);
   },
 
   // Org list
   organizations: async function () {
-    const sb = soth.sb();
-    const { data } = await sb.from('organizations').select('*').eq('status', 'active').order('name');
-    return data || [];
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return [];
+      const { data } = await sb.from('organizations').select('*').eq('status', 'active').order('name');
+      return data || [];
+    } catch (e) { console.warn('SoTH: organizations error:', e); return []; }
   },
 
   // All captures (admin)
   allCaptures: async function (filters) {
-    const sb = soth.sb();
-    let query = sb.from('latest_captures').select('*, sub_parameters(name, theme_id, themes(name)), villages(name, district, state), organizations(name)');
-    if (filters?.org_id) query = query.eq('org_id', filters.org_id);
-    if (filters?.theme_id) query = query.eq('sub_parameters.theme_id', filters.theme_id);
-    if (filters?.village_id) query = query.eq('village_id', filters.village_id);
-    const { data } = await query.order('captured_at', { ascending: false }).limit(filters?.limit || 5000);
-    return data || [];
+    try {
+      const sb = soth.data._sbOrNull();
+      if (!sb) return [];
+      let query = sb.from('latest_captures').select('*, sub_parameters(name, theme_id, themes(name)), villages(name, district, state), organizations(name)');
+      if (filters?.org_id) query = query.eq('org_id', filters.org_id);
+      if (filters?.theme_id) query = query.eq('sub_parameters.theme_id', filters.theme_id);
+      if (filters?.village_id) query = query.eq('village_id', filters.village_id);
+      const { data } = await query.order('captured_at', { ascending: false }).limit(filters?.limit || 5000);
+      return data || [];
+    } catch (e) { console.warn('SoTH: allCaptures error:', e); return []; }
   }
 };
 

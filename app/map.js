@@ -1,96 +1,48 @@
-// SoTH Map — Leaflet (default) + Mappls/MapMyIndia (optional upgrade)
+// SoTH Map — Leaflet (free, no key) + Mappls geocoding (optional)
 
 soth.map = {
   _map: null,
   _markers: [],
-  _provider: null,
+  _loaded: false,
   _loadPromise: null,
 
   _loadLeaflet: async function () {
-    if (window.L) return true;
+    if (window.L) { soth.map._loaded = true; return true; }
     if (soth.map._loadPromise) return soth.map._loadPromise;
 
     soth.map._loadPromise = new Promise((resolve, reject) => {
-      if (document.getElementById('leaflet-css')) { resolve(true); return; }
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link');
+        link.id = 'leaflet-css';
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+      }
+      if (document.getElementById('leaflet-js')) { resolve(true); return; }
       const script = document.createElement('script');
+      script.id = 'leaflet-js';
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.onload = () => { resolve(true); };
+      script.onload = () => { soth.map._loaded = true; resolve(true); };
       script.onerror = () => { reject(new Error('Leaflet load failed')); };
       document.head.appendChild(script);
     });
     return soth.map._loadPromise;
   },
 
-  _loadMappls: async function (key) {
-    if (window.mappls?.Map) return true;
-    if (!key) throw new Error('No Mappls key');
-
-    if (!document.getElementById('mappls-web-sdk-css')) {
-      const link = document.createElement('link');
-      link.id = 'mappls-web-sdk-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://apis.mappls.com/vector_map/assets/v3.5/mappls-glob.css';
-      document.head.appendChild(link);
-    }
-
-    const urls = [
-      `https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${encodeURIComponent(key)}`,
-      `https://sdk.mappls.com/map/sdk/web?v=3.0&layer=vector&access_token=${encodeURIComponent(key)}`,
-      `https://apis.mappls.com/advancedmaps/api/${encodeURIComponent(key)}/map_sdk?layer=vector&v=3.0`,
-    ];
-
-    for (const src of urls) {
-      try {
-        await new Promise((resolve, reject) => {
-          document.querySelectorAll("script[data-mappls-sdk='true']").forEach(n => n.remove());
-          const script = document.createElement('script');
-          script.src = src;
-          script.async = true;
-          script.defer = true;
-          script.dataset.mapplsSdk = 'true';
-          const timeout = setTimeout(() => reject(new Error('timeout')), 30000);
-          script.onload = () => { clearTimeout(timeout); window.mappls?.Map ? resolve(true) : reject(new Error('Mappls unavailable')); };
-          script.onerror = () => { clearTimeout(timeout); reject(new Error('load error')); };
-          document.head.appendChild(script);
-        });
-        return true;
-      } catch (e) {
-        console.warn('Mappls SDK attempt failed:', src, e.message);
-      }
-    }
-    throw new Error('All Mappls SDK URLs failed');
-  },
-
-  _ensureMap: async function () {
-    if (soth.map._provider) return;
-
-    const key = String(soth.config().MAPPLS_MAP_KEY || '').trim();
-    if (key) {
-      try {
-        await soth.map._loadMappls(key);
-        soth.map._provider = 'mappls';
-        console.log('SoTH Map: using Mappls');
-        return;
-      } catch (e) {
-        console.warn('SoTH Map: Mappls unavailable, falling back to Leaflet:', e.message);
-      }
-    }
-    await soth.map._loadLeaflet();
-    soth.map._provider = 'leaflet';
-    console.log('SoTH Map: using Leaflet');
-  },
-
   createMap: async function (containerId, center, zoom) {
-    await soth.map._ensureMap();
-
     const el = document.getElementById(containerId);
     if (!el) return null;
+
+    try {
+      await soth.map._loadLeaflet();
+    } catch (e) {
+      el.innerHTML = '<div class="map-empty">Failed to load map library. Check your internet connection.</div>';
+      return null;
+    }
+    if (!window.L) {
+      el.innerHTML = '<div class="map-empty">Map library not available.</div>';
+      return null;
+    }
 
     const cfg = soth.config();
     center = center || cfg.DEFAULT_MAP_CENTER || { lat: 22.9734, lng: 78.6569 };
@@ -103,17 +55,12 @@ soth.map = {
     soth.map._markers.forEach(m => m?.remove?.());
     soth.map._markers = [];
 
-    if (soth.map._provider === 'mappls') {
-      soth.map._map = new window.mappls.Map(containerId, {
-        center, zoom, zoomControl: true, geolocation: false, location: false,
-      });
-    } else {
-      soth.map._map = L.map(containerId, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
-      }).addTo(soth.map._map);
-    }
+    soth.map._map = L.map(containerId, { zoomControl: true }).setView([center.lat, center.lng], zoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(soth.map._map);
+
     return soth.map._map;
   },
 
@@ -133,24 +80,6 @@ soth.map = {
         ${options.maturity != null ? `<br><span style="font-size:12px;">Maturity: ${options.maturity}%</span>` : ''}
         ${options.detailUrl ? `<br><a href="${options.detailUrl}" style="color:#2563eb;font-size:12px;">View details →</a>` : ''}
       </div>`;
-
-    if (soth.map._provider === 'mappls') {
-      const markerHtml = `<div style="width:20px;height:20px;border-radius:50%;background:${pinColor};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;"></div>`;
-      const marker = new window.mappls.Marker({
-        map: soth.map._map,
-        position: { lat, lng },
-        html: markerHtml,
-        popupHtml,
-        popupOptions: { autoClose: true, offset: { bottom: [0, -10] } },
-        fitbounds: false,
-      });
-      if (options.onClick) {
-        marker?.on?.('click', options.onClick);
-        marker?.addListener?.('click', options.onClick);
-      }
-      soth.map._markers.push(marker);
-      return marker;
-    }
 
     const marker = L.circleMarker([lat, lng], {
       radius: 7,
@@ -178,13 +107,8 @@ soth.map = {
         boundsCoords.push([parseFloat(v.lat), parseFloat(v.lng)]);
       }
     });
-
     if (boundsCoords.length > 1 && soth.map._map?.fitBounds) {
-      if (soth.map._provider === 'mappls') {
-        soth.map._map.fitBounds(boundsCoords.map(c => [c[1], c[0]]), { padding: 50, maxZoom: 10 });
-      } else {
-        soth.map._map.fitBounds(boundsCoords, { padding: [50, 50], maxZoom: 10 });
-      }
+      soth.map._map.fitBounds(boundsCoords, { padding: [50, 50], maxZoom: 10 });
     }
   },
 
@@ -193,7 +117,7 @@ soth.map = {
     soth.map._markers = [];
   },
 
-  // Mappls geocoding (only works if a Mappls REST key is configured)
+  // Mappls geocoding via REST API (separate from SDK key)
   geocodeVillage: async function (village) {
     const key = soth.config().MAPPLS_MAP_KEY;
     if (!key) return null;

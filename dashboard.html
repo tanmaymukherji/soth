@@ -193,7 +193,7 @@ soth.loadDashboard = async function () {
   soth.filterVillageList('');
 
   // Stats
-  const caps = await soth.data.latestCaptures(orgId, '');
+  const caps = await soth.data.latestCaptures(orgId);
   const allCaps = caps.length;
   const params = await soth.data.allSubParams();
 
@@ -233,9 +233,15 @@ soth.loadDashboard = async function () {
 };
 
 (async function () {
-  await soth.auth.init();
-  if (!soth.auth.requireAuth('login.html')) return;
-  await soth.loadDashboard();
+  try {
+    await soth.auth.init();
+    if (!soth.auth.requireAuth('login.html')) return;
+    await soth.loadDashboard();
+  } catch (e) {
+    console.error('SoTH Dashboard: init error:', e);
+    soth.ui.showToast('Error loading dashboard: ' + (e.message || 'Unknown'), 'error');
+    setTimeout(() => { window.location.href = 'login.html'; }, 2000);
+  }
 })();
 </script>
 </body>
