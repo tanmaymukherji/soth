@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721f">
-<script src="config.js?v=20260721f"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260721g">
+<script src="config.js?v=20260721g"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721f"></script>
-<script src="app/core.js?v=20260721f"></script>
-<script src="app/map.js?v=20260721f"></script>
-<script src="app/maturity.js?v=20260721f"></script>
-<script src="app/superset.js?v=20260721f"></script>
+<script src="data/lgd.js?v=20260721g"></script>
+<script src="app/core.js?v=20260721g"></script>
+<script src="app/map.js?v=20260721g"></script>
+<script src="app/maturity.js?v=20260721g"></script>
+<script src="app/superset.js?v=20260721g"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -33,7 +33,7 @@
 <main class="app-content">
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header">
-      <span>India Ã¢â‚¬â€ Partner & Parameter Coverage Map</span>
+      <span>India ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Partner & Parameter Coverage Map</span>
       <span style="display:flex;gap:8px;font-size:12px;font-weight:400;">
         <select id="map-theme-filter" onchange="soth.renderMap()">
           <option value="">All Themes</option>
@@ -168,7 +168,7 @@ soth.renderMaturityCharts = async function () {
     </div>`);
   }
   container.innerHTML = cards.join('');
-  countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet Ã¢â‚¬â€ partners need to log in and enter data';
+  countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â partners need to log in and enter data';
 };
 
 (async function initPage() {
