@@ -307,3 +307,11 @@ document.addEventListener('DOMContentLoaded', async function () {
   soth.initSupabase();
   soth.auth.init();
 });
+
+// Retry init when Supabase SDK is ready (in case it loaded after DOMContentLoaded)
+window.addEventListener('supabaseReady', function () {
+  if (!soth._sb) {
+    soth.initSupabase();
+    soth.auth.init();
+  }
+});
