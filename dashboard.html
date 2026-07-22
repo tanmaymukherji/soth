@@ -245,6 +245,7 @@ soth.showAddVillage = async function () {
         soth._pendingLat = null; soth._pendingLng = null;
       } else {
         let result = await soth.map.geocodeViaBharatAtlas({ name, district, state });
+        if (!result?.lat) result = await soth.map.geocodeViaGramEEE({ name, district, state });
         if (!result?.lat) result = await soth.map.geocodeVillage({ name, district, state });
         if (result?.lat) {
           await sb.from('villages').update({

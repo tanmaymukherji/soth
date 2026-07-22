@@ -6,6 +6,8 @@ window.APP_CONFIG = {
   SUPABASE_ANON_KEY: '',
   // Mappls / MapMyIndia SDK key (required for the India map).
   MAPPLS_MAP_KEY: '',
+  // Optional: GramEEE LGD API URL (self-hosted government LGD data from hostinger)
+  GRAMEEE_LGD_URL: '',
   // Optional: Mappls geocoding "search" endpoint base
   MAPPLS_GEOCODE_URL: 'https://atlas.mappls.com/api/places/search/json',
   // Brand

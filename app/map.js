@@ -177,6 +177,35 @@ soth.map = {
     }
     return null;
   },
+
+  // Geocode via GramEEE LGD API (self-hosted government LGD data)
+  // Configure GRAMEEE_LGD_URL in config.js if available
+  geocodeViaGramEEE: async function (village) {
+    const baseUrl = soth.config().GRAMEEE_LGD_URL || '';
+    if (!baseUrl) return null;
+    try {
+      const resp = await fetch(
+        `${baseUrl}/api/lgd/search?q=${encodeURIComponent(village.name)}`
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (!data?.villages?.length) return null;
+      // Find best match by district+state
+      const match = data.villages.find(v =>
+        v.district_name?.toLowerCase() === village.district?.toLowerCase() &&
+        v.state_name?.toLowerCase() === village.state?.toLowerCase()
+      ) || data.villages[0];
+      if (match.lat && match.lng) {
+        return { lat: parseFloat(match.lat), lng: parseFloat(match.lng), label: `${village.name} (LGD via GramEEE)`, source: 'grameee' };
+      }
+      if (match.latitude && match.longitude) {
+        return { lat: parseFloat(match.latitude), lng: parseFloat(match.longitude), label: `${village.name} (LGD via GramEEE)`, source: 'grameee' };
+      }
+      return null;
+    } catch (e) { return null; }
+  },
+
+  // Clean village name and generate variations
     const key = soth.config().MAPPLS_MAP_KEY;
     if (!key) return null;
     try {

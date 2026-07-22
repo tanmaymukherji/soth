@@ -540,6 +540,8 @@ soth.admin = {
 
     // Geocode via BharatAtlas LGD (government data)
     let result = await soth.map.geocodeViaBharatAtlas(v);
+    // Fallback: GramEEE-hosted LGD data
+    if (!result?.lat) result = await soth.map.geocodeViaGramEEE(v);
 
     if (result?.lat) {
       await sb.from('villages').update({
@@ -728,6 +730,7 @@ soth.admin = {
     let count = 0;
     for (const v of (pending || [])) {
       let result = await soth.map.geocodeViaBharatAtlas(v);
+      if (!result?.lat) result = await soth.map.geocodeViaGramEEE(v);
 
       if (result?.lat) {
         await sb.from('villages').update({
