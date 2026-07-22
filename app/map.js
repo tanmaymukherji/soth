@@ -31,7 +31,7 @@ soth.map = {
   // Fetch GeoJSON from a URL
   _fetchGeoJSON: async function (url) {
     try {
-      const r = await fetch(url + '?v=20260721g');
+      const r = await fetch(url + '?v=20260721i');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
     } catch (e) {

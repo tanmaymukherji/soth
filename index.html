@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721h">
-<script src="config.js?v=20260721h"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260721i">
+<script src="config.js?v=20260721i"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721h"></script>
-<script src="app/core.js?v=20260721h"></script>
-<script src="app/map.js?v=20260721h"></script>
-<script src="app/maturity.js?v=20260721h"></script>
-<script src="app/superset.js?v=20260721h"></script>
+<script src="data/lgd.js?v=20260721i"></script>
+<script src="app/core.js?v=20260721i"></script>
+<script src="app/map.js?v=20260721i"></script>
+<script src="app/maturity.js?v=20260721i"></script>
+<script src="app/superset.js?v=20260721i"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -33,7 +33,7 @@
 <main class="app-content">
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header">
-      <span>India ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Partner & Parameter Coverage Map</span>
+      <span>India ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â Partner & Parameter Coverage Map</span>
       <span style="display:flex;gap:8px;font-size:12px;font-weight:400;">
         <select id="map-theme-filter" onchange="soth.renderMap()">
           <option value="">All Themes</option>
@@ -96,17 +96,19 @@ soth._loadMapData = async function () {
 };
 
 soth.renderMap = async function () {
+  console.log('SoTH: renderMap start');
   const themeFilter = document.getElementById('map-theme-filter')?.value || '';
   const orgFilter = document.getElementById('map-org-filter')?.value || '';
   const stateFilter = document.getElementById('map-state-filter')?.value || '';
 
   const map = await soth.map.createMap('map');
-  if (!map) return;
+  if (!map) { console.log('SoTH: map not created (fallback or error)'); return; }
 
   soth.map.clearMarkers();
   await soth._loadMapData();
 
   const villageIds = Object.keys(soth._geocodedVillages);
+  console.log('SoTH: rendering', villageIds.length, 'village pins');
   if (!villageIds.length) return;
 
   for (const vid of villageIds) {
@@ -168,12 +170,14 @@ soth.renderMaturityCharts = async function () {
     </div>`);
   }
   container.innerHTML = cards.join('');
-  countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â partners need to log in and enter data';
+  countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â partners need to log in and enter data';
 };
 
 (async function initPage() {
   try {
+    console.log('SoTH: initPage start');
     await soth.auth.init();
+    console.log('SoTH: auth.init done, user:', soth.currentUser?.email || 'none');
     if (soth.currentUser) {
       document.getElementById('nav-dashboard').style.display = '';
       document.getElementById('nav-login').textContent = soth.currentUser.email;
@@ -181,13 +185,17 @@ soth.renderMaturityCharts = async function () {
       document.getElementById('nav-logout').style.display = '';
     }
 
+    console.log('SoTH: loading themes...');
     const themes = await soth.data.themes();
+    console.log('SoTH: loaded', themes.length, 'themes');
     const themeSelect = document.getElementById('map-theme-filter');
     themes.forEach(t => {
       themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
     });
 
+    console.log('SoTH: loading orgs...');
     const orgs = await soth.data.organizations();
+    console.log('SoTH: loaded', orgs.length, 'orgs');
     const orgSelect = document.getElementById('map-org-filter');
     orgs.forEach(o => {
       orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
@@ -198,13 +206,17 @@ soth.renderMaturityCharts = async function () {
       stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
     });
 
+    console.log('SoTH: rendering map...');
     await soth.renderMap();
+    console.log('SoTH: rendering stats...');
     await soth.renderStats();
+    console.log('SoTH: rendering maturity charts...');
     await soth.renderMaturityCharts();
+    console.log('SoTH: initPage complete');
   } catch (e) {
     console.error('SoTH: initPage error:', e);
     document.getElementById('stats-ribbon').innerHTML =
-      '<div class="stat-card"><div class="stat-value">---</div><div class="stat-label">Error loading data. Check console.</div></div>';
+      '<div class="stat-card"><div class="stat-value">---</div><div class="stat-label">Error: ' + (e.message || 'Unknown') + '</div></div>';
   }
 })();
 </script>
