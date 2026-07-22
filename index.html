@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721n">
-<script src="config.js?v=20260721n"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260721o">
+<script src="config.js?v=20260721o"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721n"></script>
-<script src="app/core.js?v=20260721n"></script>
-<script src="app/map.js?v=20260721n"></script>
-<script src="app/maturity.js?v=20260721n"></script>
-<script src="app/superset.js?v=20260721n"></script>
+<script src="data/lgd.js?v=20260721o"></script>
+<script src="app/core.js?v=20260721o"></script>
+<script src="app/map.js?v=20260721o"></script>
+<script src="app/maturity.js?v=20260721o"></script>
+<script src="app/superset.js?v=20260721o"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -51,7 +51,7 @@
 
   <div class="dashboard-grid" id="stats-ribbon"></div>
 
-  <div class="card" style="margin-top:20px;">
+  <div class="card" style="margin-top:20px;display:none;" id="maturity-card">
     <div class="card-header">
       <span>Partner Maturity Overview</span>
       <span id="maturity-count" style="font-size:13px;font-weight:400;color:var(--gray-500);"></span>
@@ -113,15 +113,26 @@ soth.renderStats = async function () {
 };
 
 soth.renderMaturityCharts = async function () {
+  const card = document.getElementById('maturity-card');
+  const user = soth.currentUser;
+  const profile = soth.currentProfile;
+  if (!user || !profile) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
   try {
     const orgs = await soth.data.organizations();
     const container = document.getElementById('maturity-charts');
     const countLabel = document.getElementById('maturity-count');
 
+    // Admin sees all orgs, partner sees only their org
+    const orgsToShow = profile.role === 'soth_admin'
+      ? orgs
+      : orgs.filter(o => o.id === profile.org_id);
+
     let totalScores = 0;
     let scored = 0;
     const cards = [];
-    for (const org of orgs) {
+    for (const org of orgsToShow) {
       const m = await soth.maturity.compute(org.id);
       totalScores += m.overall || 0;
       if (m.overall) scored++;
@@ -136,7 +147,7 @@ soth.renderMaturityCharts = async function () {
       </div>`);
     }
     container.innerHTML = cards.join('');
-    countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet';
+    countLabel.textContent = scored ? `Average: ${orgsToShow.length ? Math.round(totalScores / orgsToShow.length) : 0}%` : 'No capture data yet';
   } catch (e) {
     console.error('SoTH: renderMaturityCharts error:', e);
   }
