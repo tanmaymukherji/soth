@@ -34,7 +34,7 @@
   <div class="row" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
     <div style="flex:1;min-width:200px;">
       <label>Partner A</label>
-      <select id="compare-org-- onchange="soth.renderCompare()"></select>
+      <select id="compare-org-a" onchange="soth.renderCompare()"></select>
     </div>
     <div style="flex:1;min-width:200px;">
       <label>Partner B</label>
@@ -101,13 +101,15 @@ soth.renderCompare = async function () {
 
 (async function () {
   await soth.auth.init();
-  await soth.auth.init();
-  if (soth.currentUser) {
-    document.getElementById('nav-dashboard').style.display = '';
-    document.getElementById('nav-login').textContent = soth.currentUser.email;
-    document.getElementById('nav-login').href = 'dashboard.html';
-    document.getElementById('nav-logout').style.display = '';
+  if (!soth.currentUser) {
+    document.querySelector('.app-content').innerHTML =
+      '<p class="empty-state" style="margin-top:40px;"><a href="login.html">Log in</a> to compare partners.</p>';
+    return;
   }
+  document.getElementById('nav-dashboard').style.display = '';
+  document.getElementById('nav-login').textContent = soth.currentUser.email;
+  document.getElementById('nav-login').href = 'dashboard.html';
+  document.getElementById('nav-logout').style.display = '';
 
   const orgs = await soth.data.organizations();
   const selA = document.getElementById('compare-org-a');
