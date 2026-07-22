@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â SoTH</title>
+<title>Dashboard — SoTH</title>
 <link rel="stylesheet" href="styles/app.css?v=20260721k">
 <script src="config.js?v=20260721k"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
@@ -64,7 +64,7 @@
     <div class="card" style="margin-bottom:16px;">
       <div class="card-header">
         <span>Village: <span id="active-village-name"></span></span>
-        <button class="btn btn-outline btn-small" onclick="document.getElementById('capture-workspace').style.display='none';document.getElementById('village-selector').style.display='';">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Change Village</button>
+        <button class="btn btn-outline btn-small" onclick="document.getElementById('capture-workspace').style.display='none';document.getElementById('village-selector').style.display='';">← Change Village</button>
       </div>
     </div>
     <div id="capture-content"></div>
@@ -166,94 +166,74 @@ soth.showAddVillage = async function () {
 };
 
 soth.loadDashboard = async function () {
-  console.log('SoTH Dashboard: loadDashboard start');
-  try {
-    if (!soth.currentProfile?.org_id) {
-      document.getElementById('dash-welcome').textContent = 'You are not linked to an organisation yet.';
-      document.getElementById('dash-subtitle').textContent = 'Contact an admin to assign you to an organisation.';
-      console.log('SoTH Dashboard: no org_id, showing message');
-      return;
-    }
-
-    const orgId = soth.currentProfile.org_id;
-    const orgs = await soth.data.organizations();
-    const org = orgs.find(o => o.id === orgId);
-
-    document.getElementById('dash-welcome').textContent = org ? org.name + ' Dashboard' : 'Partner Dashboard';
-    console.log('SoTH Dashboard: org =', org?.name || 'unknown');
-
-    soth.orgVillagesData = await soth.data.orgVillages(orgId);
-    const totalVillages = soth.orgVillagesData.length;
-    console.log('SoTH Dashboard: loaded', totalVillages, 'villages');
-
-    if (soth.auth.isAdmin()) {
-      document.getElementById('nav-admin').style.display = '';
-    }
-    document.getElementById('user-label').textContent = soth.currentUser?.email || '';
-
-    soth.filterVillageList('');
-
-    console.log('SoTH Dashboard: loading captures...');
-    const caps = await soth.data.latestCaptures(orgId);
-    const allCaps = caps.length;
-    console.log('SoTH Dashboard: loaded', allCaps, 'captures');
-    const params = await soth.data.allSubParams();
-
-    document.getElementById('dash-stats').innerHTML = `
-      <div class="stat-card"><div class="stat-value">${totalVillages}</div><div class="stat-label">Villages</div></div>
-      <div class="stat-card"><div class="stat-value">${allCaps}</div><div class="stat-label">Captures</div></div>
-      <div class="stat-card"><div class="stat-value">${params.length}</div><div class="stat-label">Total Parameters</div></div>
-      <div class="stat-card"><div class="stat-value">${new Date().toLocaleDateString('en-IN')}</div><div class="stat-label">Last Updated</div></div>
-    `;
-
-    console.log('SoTH Dashboard: computing maturity...');
-    const maturity = await soth.maturity.compute(orgId);
-    console.log('SoTH Dashboard: maturity overall =', maturity.overall);
-    document.getElementById('overall-maturity').textContent = `Overall: ${maturity.overall}%`;
-    document.getElementById('overall-maturity').style.color = soth.map.maturityColor(maturity.overall);
-
-    const ctx = document.getElementById('theme-maturity-chart');
-    ctx.innerHTML = '<canvas id="maturity-canvas"></canvas>';
-    new Chart(document.getElementById('maturity-canvas'), {
-      type: 'radar',
-      data: {
-        labels: maturity.themes.map(t => t.name),
-        datasets: [{
-          label: 'Maturity %',
-          data: maturity.themes.map(t => t.score),
-          backgroundColor: 'rgba(37,99,235,0.1)',
-          borderColor: '#2563eb',
-          pointBackgroundColor: maturity.themes.map(t => soth.map.maturityColor(t.score)),
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
-        plugins: { legend: { display: false } }
-      }
-    });
-    console.log('SoTH Dashboard: loadDashboard complete');
-  } catch (e) {
-    console.error('SoTH Dashboard: loadDashboard error:', e);
+  if (!soth.currentProfile?.org_id) {
+    document.getElementById('dash-welcome').textContent = 'You are not linked to an organisation yet.';
+    document.getElementById('dash-subtitle').textContent = 'Contact an admin to assign you to an organisation.';
+    return;
   }
+
+  const orgId = soth.currentProfile.org_id;
+  const orgs = await soth.data.organizations();
+  const org = orgs.find(o => o.id === orgId);
+
+  document.getElementById('dash-welcome').textContent = org ? org.name + ' Dashboard' : 'Partner Dashboard';
+
+  soth.orgVillagesData = await soth.data.orgVillages(orgId);
+  const totalVillages = soth.orgVillagesData.length;
+
+  // Show admin link
+  if (soth.auth.isAdmin()) {
+    document.getElementById('nav-admin').style.display = '';
+  }
+  document.getElementById('user-label').textContent = soth.currentUser?.email || '';
+
+  // Render village list
+  soth.filterVillageList('');
+
+  // Stats
+  const caps = await soth.data.latestCaptures(orgId, '');
+  const allCaps = caps.length;
+  const params = await soth.data.allSubParams();
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-value">${totalVillages}</div><div class="stat-label">Villages</div></div>
+    <div class="stat-card"><div class="stat-value">${allCaps}</div><div class="stat-label">Captures</div></div>
+    <div class="stat-card"><div class="stat-value">${params.length}</div><div class="stat-label">Total Parameters</div></div>
+    <div class="stat-card"><div class="stat-value">${new Date().toLocaleDateString('en-IN')}</div><div class="stat-label">Last Updated</div></div>
+  `;
+
+  // Maturity
+  const maturity = await soth.maturity.compute(orgId);
+  document.getElementById('overall-maturity').textContent = `Overall: ${maturity.overall}%`;
+  document.getElementById('overall-maturity').style.color = soth.map.maturityColor(maturity.overall);
+
+  const ctx = document.getElementById('theme-maturity-chart');
+  ctx.innerHTML = '<canvas id="maturity-canvas"></canvas>';
+  new Chart(document.getElementById('maturity-canvas'), {
+    type: 'radar',
+    data: {
+      labels: maturity.themes.map(t => t.name),
+      datasets: [{
+        label: 'Maturity %',
+        data: maturity.themes.map(t => t.score),
+        backgroundColor: 'rgba(37,99,235,0.1)',
+        borderColor: '#2563eb',
+        pointBackgroundColor: maturity.themes.map(t => soth.map.maturityColor(t.score)),
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
+      plugins: { legend: { display: false } }
+    }
+  });
 };
 
 (async function () {
-  try {
-    console.log('SoTH Dashboard: init start');
-    await soth.auth.init();
-    console.log('SoTH Dashboard: auth.init done, user:', soth.currentUser?.email || 'none',
-      'profile:', soth.currentProfile?.role || 'none', 'org_id:', soth.currentProfile?.org_id || 'none');
-    if (!soth.auth.requireAuth('login.html')) return;
-    console.log('SoTH Dashboard: loading dashboard...');
-    await soth.loadDashboard();
-    console.log('SoTH Dashboard: init complete');
-  } catch (e) {
-    console.error('SoTH Dashboard: init error:', e);
-    soth.ui.showToast('Error loading dashboard: ' + (e.message || 'Unknown'), 'error');
-    setTimeout(() => { window.location.href = 'login.html'; }, 2000);
-  }
+  await soth.auth.init();
+  if (!soth.auth.requireAuth('login.html')) return;
+  await soth.loadDashboard();
 })();
 </script>
 </body>

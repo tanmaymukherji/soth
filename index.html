@@ -33,7 +33,7 @@
 <main class="app-content">
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header">
-      <span>India ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Partner & Parameter Coverage Map</span>
+      <span>India — Partner & Parameter Coverage Map</span>
       <span style="display:flex;gap:8px;font-size:12px;font-weight:400;">
         <select id="map-theme-filter" onchange="soth.renderMap()">
           <option value="">All Themes</option>
@@ -61,90 +61,55 @@
 </main>
 
 <script>
-soth._geocodedVillages = null;
-soth._orgVillageMap = null;
-
-// Load all geocoded villages + their org mappings in a single pass
-soth._loadMapData = async function () {
-  if (soth._geocodedVillages) return;
-  try {
-    const sb = soth.sb();
-    if (!sb) { console.warn('SoTH: Supabase unavailable, map data not loaded'); return; }
-
-    const { data: orgVillages } = await sb.from('org_villages')
-      .select('org_id, village_id, villages(id, name, lat, lng, district, state)')
-      .eq('status', 'active');
-
-    const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
-
-    soth._orgMap = {};
-    (orgs || []).forEach(o => { soth._orgMap[o.id] = o; });
-
-    soth._orgVillageMap = {};
-    soth._geocodedVillages = {};
-    (orgVillages || []).forEach(ov => {
-      const v = ov.villages;
-      if (!v || v.lat == null || v.lng == null) return;
-      soth._geocodedVillages[v.id] = v;
-      if (!soth._orgVillageMap[v.id]) soth._orgVillageMap[v.id] = [];
-      soth._orgVillageMap[v.id].push(ov.org_id);
-    });
-    console.log('SoTH: loaded', Object.keys(soth._geocodedVillages).length, 'geocoded villages');
-  } catch (e) {
-    console.error('SoTH: loadMapData error:', e);
-  }
-};
-
 soth.renderMap = async function () {
-  console.log('SoTH: renderMap start');
   const themeFilter = document.getElementById('map-theme-filter')?.value || '';
   const orgFilter = document.getElementById('map-org-filter')?.value || '';
   const stateFilter = document.getElementById('map-state-filter')?.value || '';
 
   const map = await soth.map.createMap('map');
-  if (!map) { console.log('SoTH: map not created (fallback or error)'); return; }
+  if (!map) return;
 
   soth.map.clearMarkers();
-  await soth._loadMapData();
 
-  const villageIds = Object.keys(soth._geocodedVillages);
-  console.log('SoTH: rendering', villageIds.length, 'village pins');
-  if (!villageIds.length) return;
-
-  for (const vid of villageIds) {
-    const v = soth._geocodedVillages[vid];
-    if (!v) continue;
-    if (stateFilter && v.state !== stateFilter) continue;
-
-    const orgIds = soth._orgVillageMap[vid] || [];
-    if (orgFilter && !orgIds.includes(orgFilter)) continue;
-
-    // Use the first org for display
-    const firstOrg = orgIds.length ? soth._orgMap[orgIds[0]] : null;
-    soth.map.addVillagePin(v, firstOrg, {
-      color: soth.map.themeColor(firstOrg?.name || ''),
-      detailUrl: orgIds.length ? `village.html?org=${orgIds[0]}&village=${vid}` : undefined
-    });
+  const orgs = await soth.data.organizations();
+  for (const org of orgs) {
+    if (orgFilter && org.id !== orgFilter) continue;
+    const villages = await soth.data.orgVillages(org.id);
+    const maturity = await soth.maturity.compute(org.id);
+    for (const ov of villages) {
+      const v = ov.villages;
+      if (!v || !v.lat || !v.lng) continue;
+      if (stateFilter && v.state !== stateFilter) continue;
+      // Theme filter: if a specific theme, only show villages that have captures for that theme
+      if (themeFilter) {
+        const caps = await soth.data.latestCaptures(org.id, v.id);
+        const hasTheme = caps.some(c => c.sub_parameters?.theme_id === themeFilter);
+        if (!hasTheme) continue;
+      }
+      const orgMaturity = maturity.themes.find(t => t.id === themeFilter)?.score ?? maturity.overall;
+      const color = soth.map.maturityColor(orgMaturity);
+      soth.map.addVillagePin(v, org, {
+        color,
+        maturity: orgMaturity,
+        detailUrl: `village.html?org=${org.id}&village=${v.id}`
+      });
+    }
   }
 };
 
 soth.renderStats = async function () {
-  try {
-    const orgs = await soth.data.organizations();
-    const allParams = await soth.data.allSubParams();
-    const sb = soth.sb();
-    const { data: vCount } = sb ? await sb.from('villages').select('id', { count: 'exact', head: true }) : { data: null };
+  const orgs = await soth.data.organizations();
+  const allParams = await soth.data.allSubParams();
+  const { data: allVillages } = await soth.sb().from('villages').select('*').limit(1);
+  const { data: vCount } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
 
-    const ribbon = document.getElementById('stats-ribbon');
-    ribbon.innerHTML = `
-      <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
-      <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
-      <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
-      <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
-    `;
-  } catch (e) {
-    console.error('SoTH: renderStats error:', e);
-  }
+  const ribbon = document.getElementById('stats-ribbon');
+  ribbon.innerHTML = `
+    <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
+    <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
+    <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
+    <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
+  `;
 };
 
 soth.renderMaturityCharts = async function () {
@@ -153,71 +118,57 @@ soth.renderMaturityCharts = async function () {
   const countLabel = document.getElementById('maturity-count');
 
   let totalScores = 0;
-  let scored = 0;
   const cards = [];
   for (const org of orgs) {
     const m = await soth.maturity.compute(org.id);
     totalScores += m.overall || 0;
-    if (m.overall) scored++;
     const color = soth.map.maturityColor(m.overall);
     cards.push(`<div class="card" style="padding:16px;">
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${soth.ui.escapeHtml(org.name)}</div>
       <div style="font-size:28px;font-weight:700;color:${color};">${m.overall}%</div>
       <div class="maturity-bar"><div class="maturity-fill" style="width:${m.overall}%;background:${color};"></div></div>
       <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">
-        ${m.overall ? m.themes.filter(t => t.score > 0).length + '/' + m.themes.length + ' themes active' : 'No capture data yet'}
+        ${m.themes.filter(t => t.score > 0).length}/${m.themes.length} themes active
       </div>
     </div>`);
   }
   container.innerHTML = cards.join('');
-  countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â partners need to log in and enter data';
+  countLabel.textContent = `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%`;
 };
 
+// Populate filters
 (async function initPage() {
-  try {
-    console.log('SoTH: initPage start');
-    await soth.auth.init();
-    console.log('SoTH: auth.init done, user:', soth.currentUser?.email || 'none');
-    if (soth.currentUser) {
-      document.getElementById('nav-dashboard').style.display = '';
-      document.getElementById('nav-login').textContent = soth.currentUser.email;
-      document.getElementById('nav-login').href = 'dashboard.html';
-      document.getElementById('nav-logout').style.display = '';
-    }
-
-    console.log('SoTH: loading themes...');
-    const themes = await soth.data.themes();
-    console.log('SoTH: loaded', themes.length, 'themes');
-    const themeSelect = document.getElementById('map-theme-filter');
-    themes.forEach(t => {
-      themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-    });
-
-    console.log('SoTH: loading orgs...');
-    const orgs = await soth.data.organizations();
-    console.log('SoTH: loaded', orgs.length, 'orgs');
-    const orgSelect = document.getElementById('map-org-filter');
-    orgs.forEach(o => {
-      orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
-    });
-
-    const stateSelect = document.getElementById('map-state-filter');
-    window.SOTH_LGD.states.forEach(s => {
-      stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
-    });
-
-    console.log('SoTH: rendering map...');
-    await soth.renderMap();
-    console.log('SoTH: rendering stats...');
-    await soth.renderStats();
-    console.log('SoTH: rendering maturity charts...');
-    await soth.renderMaturityCharts();
-    console.log('SoTH: initPage complete');
-  } catch (e) {
-    console.error('SoTH: initPage error:', e);
-    document.getElementById('stats-ribbon').innerHTML =
-      '<div class="stat-card"><div class="stat-value">---</div><div class="stat-label">Error: ' + (e.message || 'Unknown') + '</div></div>';
+  await soth.auth.init();
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').textContent = soth.currentUser.email;
+    document.getElementById('nav-login').href = 'dashboard.html';
+    document.getElementById('nav-logout').style.display = '';
   }
+
+  // Theme filter
+  const themes = await soth.data.themes();
+  const themeSelect = document.getElementById('map-theme-filter');
+  themes.forEach(t => {
+    themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+  });
+
+  // Org filter
+  const orgs = await soth.data.organizations();
+  const orgSelect = document.getElementById('map-org-filter');
+  orgs.forEach(o => {
+    orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
+  });
+
+  // State filter
+  const stateSelect = document.getElementById('map-state-filter');
+  window.SOTH_LGD.states.forEach(s => {
+    stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
+  });
+
+  await soth.renderMap();
+  await soth.renderStats();
+  await soth.renderMaturityCharts();
 })();
 </script>
 </body>
