@@ -1,4 +1,4 @@
-// SoTH Admin — Admin console functionality
+// SoTH Admin - Admin console functionality
 
 soth.admin = {
   init: function () {

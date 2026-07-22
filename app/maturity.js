@@ -1,4 +1,4 @@
-// SoTH Maturity — Computes partner maturity scores per theme
+// SoTH Maturity - Computes partner maturity scores per theme
 
 soth.maturity = {
   // Compute maturity for a single org across themes

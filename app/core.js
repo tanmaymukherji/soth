@@ -1,4 +1,4 @@
-// SoTH Core — Supabase init, auth helpers, global state
+// SoTH Core - Supabase init, auth helpers, global state
 
 const soth = {};
 

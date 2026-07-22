@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721l">
-<script src="config.js?v=20260721l"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260721m">
+<script src="config.js?v=20260721m"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721l"></script>
-<script src="app/core.js?v=20260721l"></script>
-<script src="app/map.js?v=20260721l"></script>
-<script src="app/maturity.js?v=20260721l"></script>
-<script src="app/superset.js?v=20260721l"></script>
+<script src="data/lgd.js?v=20260721m"></script>
+<script src="app/core.js?v=20260721m"></script>
+<script src="app/map.js?v=20260721m"></script>
+<script src="app/maturity.js?v=20260721m"></script>
+<script src="app/superset.js?v=20260721m"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -33,7 +33,7 @@
 <main class="app-content">
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header">
-      <span>India â€” Partner & Parameter Coverage Map</span>
+      <span>India a" Partner & Parameter Coverage Map</span>
       <span style="display:flex;gap:8px;font-size:12px;font-weight:400;">
         <select id="map-theme-filter" onchange="soth.renderMap()">
           <option value="">All Themes</option>
@@ -113,62 +113,71 @@ soth.renderStats = async function () {
 };
 
 soth.renderMaturityCharts = async function () {
-  const orgs = await soth.data.organizations();
-  const container = document.getElementById('maturity-charts');
-  const countLabel = document.getElementById('maturity-count');
+  try {
+    const orgs = await soth.data.organizations();
+    const container = document.getElementById('maturity-charts');
+    const countLabel = document.getElementById('maturity-count');
 
-  let totalScores = 0;
-  const cards = [];
-  for (const org of orgs) {
-    const m = await soth.maturity.compute(org.id);
-    totalScores += m.overall || 0;
-    const color = soth.map.maturityColor(m.overall);
-    cards.push(`<div class="card" style="padding:16px;">
-      <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${soth.ui.escapeHtml(org.name)}</div>
-      <div style="font-size:28px;font-weight:700;color:${color};">${m.overall}%</div>
-      <div class="maturity-bar"><div class="maturity-fill" style="width:${m.overall}%;background:${color};"></div></div>
-      <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">
-        ${m.themes.filter(t => t.score > 0).length}/${m.themes.length} themes active
-      </div>
-    </div>`);
+    let totalScores = 0;
+    let scored = 0;
+    const cards = [];
+    for (const org of orgs) {
+      const m = await soth.maturity.compute(org.id);
+      totalScores += m.overall || 0;
+      if (m.overall) scored++;
+      const color = soth.map.maturityColor(m.overall);
+      cards.push(`<div class="card" style="padding:16px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${soth.ui.escapeHtml(org.name)}</div>
+        <div style="font-size:28px;font-weight:700;color:${color};">${m.overall}%</div>
+        <div class="maturity-bar"><div class="maturity-fill" style="width:${m.overall}%;background:${color};"></div></div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">
+          ${m.overall ? m.themes.filter(t => t.score > 0).length + '/' + m.themes.length + ' themes active' : 'No capture data yet'}
+        </div>
+      </div>`);
+    }
+    container.innerHTML = cards.join('');
+    countLabel.textContent = scored ? `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%` : 'No capture data yet';
+  } catch (e) {
+    console.error('SoTH: renderMaturityCharts error:', e);
   }
-  container.innerHTML = cards.join('');
-  countLabel.textContent = `Average: ${orgs.length ? Math.round(totalScores / orgs.length) : 0}%`;
 };
 
 // Populate filters
 (async function initPage() {
-  await soth.auth.init();
-  if (soth.currentUser) {
-    document.getElementById('nav-dashboard').style.display = '';
-    document.getElementById('nav-login').textContent = soth.currentUser.email;
-    document.getElementById('nav-login').href = 'dashboard.html';
-    document.getElementById('nav-logout').style.display = '';
+  try {
+    await soth.auth.init();
+    if (soth.currentUser) {
+      document.getElementById('nav-dashboard').style.display = '';
+      document.getElementById('nav-login').textContent = soth.currentUser.email;
+      document.getElementById('nav-login').href = 'dashboard.html';
+      document.getElementById('nav-logout').style.display = '';
+    }
+
+    const themes = await soth.data.themes();
+    const themeSelect = document.getElementById('map-theme-filter');
+    themes.forEach(t => {
+      themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+    });
+
+    const orgs = await soth.data.organizations();
+    const orgSelect = document.getElementById('map-org-filter');
+    orgs.forEach(o => {
+      orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
+    });
+
+    const stateSelect = document.getElementById('map-state-filter');
+    window.SOTH_LGD.states.forEach(s => {
+      stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
+    });
+
+    await soth.renderMap();
+    await soth.renderStats();
+    await soth.renderMaturityCharts();
+  } catch (e) {
+    console.error('SoTH: initPage error:', e);
+    document.getElementById('stats-ribbon').innerHTML =
+      '<div class="stat-card"><div class="stat-value">Error</div><div class="stat-label">' + (e.message || 'Unknown') + '</div></div>';
   }
-
-  // Theme filter
-  const themes = await soth.data.themes();
-  const themeSelect = document.getElementById('map-theme-filter');
-  themes.forEach(t => {
-    themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-  });
-
-  // Org filter
-  const orgs = await soth.data.organizations();
-  const orgSelect = document.getElementById('map-org-filter');
-  orgs.forEach(o => {
-    orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
-  });
-
-  // State filter
-  const stateSelect = document.getElementById('map-state-filter');
-  window.SOTH_LGD.states.forEach(s => {
-    stateSelect.innerHTML += `<option value="${s.name}">${s.name}</option>`;
-  });
-
-  await soth.renderMap();
-  await soth.renderStats();
-  await soth.renderMaturityCharts();
 })();
 </script>
 </body>

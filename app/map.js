@@ -1,4 +1,4 @@
-// SoTH Map — BharatAtlas-credited map with village pins (no basemap tiles)
+// SoTH Map - BharatAtlas-credited map with village pins (no basemap tiles)
 
 soth.map = {
   _map: null,
@@ -90,7 +90,7 @@ soth.map = {
         <span style="color:#666;">${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span><br>
         ${org ? `<span style="color:#2563eb;">${soth.ui.escapeHtml(org.name)}</span>` : ''}
         ${options.maturity != null ? `<br><span style="font-size:12px;">Maturity: ${options.maturity}%</span>` : ''}
-        ${options.detailUrl ? `<br><a href="${options.detailUrl}" style="color:#2563eb;font-size:12px;">View details →</a>` : ''}
+        ${options.detailUrl ? `<br><a href="${options.detailUrl}" style="color:#2563eb;font-size:12px;">View details </a>` : ''}
       </div>`;
 
     const marker = L.circleMarker([lat, lng], {
