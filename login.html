@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login a" SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721m">
-<script src="config.js?v=20260721m"></script>
+<title>Login - SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721n">
+<script src="config.js?v=20260721n"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
-<script src="data/lgd.js?v=20260721m"></script>
-<script src="app/core.js?v=20260721m"></script>
+<script src="data/lgd.js?v=20260721n"></script>
+<script src="app/core.js?v=20260721n"></script>
 </head>
 <body>
 <div id="toast-container"></div>
 
 <header class="app-header">
   <div class="brand">Sense of <span>The House</span></div>
-  <nav><a href="index.html">a+ Back to Map</a></nav>
+  <nav><a href="index.html">< Back to Map</a></nav>
 </header>
 
 <main class="auth-container">
@@ -72,7 +72,11 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
     if (error) {
       soth.ui.showToast(error.message, 'error');
     } else {
-      window.location.href = 'dashboard.html';
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+      const isAdmin = soth.currentProfile?.role === 'soth_admin';
+      if (redirect) window.location.href = redirect;
+      else if (isAdmin) window.location.href = 'admin.html';
+      else window.location.href = 'dashboard.html';
     }
   } else {
     if (password.length < 6) {
