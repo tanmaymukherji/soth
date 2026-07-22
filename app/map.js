@@ -143,7 +143,7 @@ soth.map = {
     return [...new Set(vars)];
   },
 
-  // Geocode via BharatAtlas LGD (primary, uses government LGD data)
+  // Geocode via BharatAtlas LGD (uses government LGD polygon data)
   geocodeViaBharatAtlas: async function (village) {
     const baseName = soth.map._cleanVillageName(village.name);
     const nameForms = soth.map._nameVariations(baseName);
@@ -174,6 +174,22 @@ soth.map = {
         if (!lat || !lng) continue;
         return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (LGD via BharatAtlas)`, source: 'bharatlas' };
       } catch (e) { /* try next variation */ }
+    }
+    // Fallback: try district-level geocode via Nominatim
+    if (village.district) {
+      try {
+        const q = encodeURIComponent(`${village.district}, ${village.state}, India`);
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+          headers: { 'User-Agent': 'SoTH/1.0' }
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (data?.length) {
+            const loc = data[0];
+            return { lat: parseFloat(loc.lat), lng: parseFloat(loc.lon), label: `${village.district} district, ${village.state}`, source: 'district-fallback' };
+          }
+        }
+      } catch (e) {}
     }
     return null;
   },

@@ -708,7 +708,7 @@ soth.admin = {
 
     let html = '<div class="admin-section"><h2>Geocoding Queue (' + (pending?.length || 0) + ' remaining)</h2>';
     html += `<button class="btn btn-primary" onclick="soth.admin.batchGeocode()">Batch Geocode All</button>`;
-    html += `<p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Uses BharatAtlas LGD data (Government Local Government Directory). Edit village form allows manual coordinate entry.</p>`;
+    html += `<p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Geocoding: BharatAtlas LGD (village-level) → district-level fallback → manual entry in Edit form.</p>`;
     if (!pending?.length) {
       html += '<p class="empty-state">All villages geocoded!</p>';
     } else {
