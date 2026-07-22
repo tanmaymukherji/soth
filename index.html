@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721o">
-<script src="config.js?v=20260721o"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260721p">
+<script src="config.js?v=20260721p"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721o"></script>
-<script src="app/core.js?v=20260721o"></script>
-<script src="app/map.js?v=20260721o"></script>
-<script src="app/maturity.js?v=20260721o"></script>
-<script src="app/superset.js?v=20260721o"></script>
+<script src="data/lgd.js?v=20260721p"></script>
+<script src="app/core.js?v=20260721p"></script>
+<script src="app/map.js?v=20260721p"></script>
+<script src="app/maturity.js?v=20260721p"></script>
+<script src="app/superset.js?v=20260721p"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -71,26 +71,30 @@ soth.renderMap = async function () {
 
   soth.map.clearMarkers();
 
+  // Load all orgs + pre-compute their maturities in parallel
   const orgs = await soth.data.organizations();
-  for (const org of orgs) {
-    if (orgFilter && org.id !== orgFilter) continue;
+  const filteredOrgs = orgFilter ? orgs.filter(o => o.id === orgFilter) : orgs;
+  const maturities = await Promise.all(filteredOrgs.map(o => soth.maturity.compute(o.id)));
+  const maturityByOrg = {};
+  filteredOrgs.forEach((o, i) => { maturityByOrg[o.id] = maturities[i]; });
+
+  for (const org of filteredOrgs) {
     const villages = await soth.data.orgVillages(org.id);
-    const maturity = await soth.maturity.compute(org.id);
+    const maturity = maturityByOrg[org.id];
     for (const ov of villages) {
       const v = ov.villages;
       if (!v || !v.lat || !v.lng) continue;
       if (stateFilter && v.state !== stateFilter) continue;
-      // Theme filter: if a specific theme, only show villages that have captures for that theme
       if (themeFilter) {
         const caps = await soth.data.latestCaptures(org.id, v.id);
         const hasTheme = caps.some(c => c.sub_parameters?.theme_id === themeFilter);
         if (!hasTheme) continue;
       }
-      const orgMaturity = maturity.themes.find(t => t.id === themeFilter)?.score ?? maturity.overall;
+      const orgMaturity = maturity.overall;
       const color = soth.map.maturityColor(orgMaturity);
       soth.map.addVillagePin(v, org, {
         color,
-        maturity: orgMaturity,
+        maturity: Math.round(orgMaturity),
         detailUrl: `village.html?org=${org.id}&village=${v.id}`
       });
     }
