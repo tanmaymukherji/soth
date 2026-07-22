@@ -81,10 +81,14 @@ soth.capture = {
 
     let inputHtml = '';
     if (param.data_type === 'qualitative') {
-      const opts = { '': '-- Select --', 'yes': 'Yes', 'no': 'No', 'partially': 'Partially', 'na': 'N/A', 'not_tracking': 'Not Tracking' };
+      const opts = { 'yes': 'Yes', 'no': 'No', 'partially': 'Partially', 'na': 'N/A', 'not_tracking': 'Not Tracking' };
+      // Case-insensitive match for existing value
+      const matchedKey = Object.keys(opts).find(k => k.toLowerCase() === valueText.toLowerCase()) || '';
       inputHtml = `<select class="capture-input" data-param-id="${param.id}" data-type="qualitative"
         onchange="soth.capture.saveCapture('${param.id}','qualitative',this.value,null,null)">
-        ${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${valueText === k ? 'selected' : ''}>${v}</option>`).join('')}
+        <option value="">-- Select --</option>
+        ${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${matchedKey === k ? 'selected' : ''}>${v}</option>`).join('')}
+        ${valueText && !matchedKey ? `<option value="${soth.ui.escapeHtml(valueText)}" selected>${soth.ui.escapeHtml(valueText)} (custom)</option>` : ''}
       </select>`;
     } else if (param.data_type === 'quantitative_scale') {
       const maxScale = param.scale?.max || 5;
