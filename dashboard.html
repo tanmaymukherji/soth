@@ -166,11 +166,65 @@ soth.showAddVillage = async function () {
 };
 
 soth.loadDashboard = async function () {
+  // Admin view: show all orgs overview
+  if (soth.auth.isAdmin()) {
+    document.getElementById('dash-welcome').textContent = 'Admin Dashboard - Partner Overview';
+    document.getElementById('dash-subtitle').textContent = 'All partners at a glance';
+    document.getElementById('nav-admin').style.display = '';
+    document.getElementById('user-label').textContent = soth.currentUser?.email || '';
+
+    const orgs = await soth.data.organizations();
+    const allParams = await soth.data.allSubParams();
+
+    // Stats across all orgs
+    const { data: vCount } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
+    document.getElementById('dash-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partners</div></div>
+      <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Parameters</div></div>
+      <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
+      <div class="stat-card"><div class="stat-value">${new Date().toLocaleDateString('en-IN')}</div><div class="stat-label">Last Updated</div></div>
+    `;
+
+    // Maturity overview for all orgs
+    const maturity = await Promise.all(orgs.map(o => soth.maturity.compute(o.id)));
+    const overall = maturity.reduce((s, m) => s + (m.overall || 0), 0) / orgs.length;
+    document.getElementById('overall-maturity').textContent = `Average: ${Math.round(overall)}%`;
+    document.getElementById('overall-maturity').style.color = soth.map.maturityColor(overall);
+
+    const ctx = document.getElementById('theme-maturity-chart');
+    ctx.innerHTML = '<canvas id="maturity-canvas"></canvas>';
+    new Chart(document.getElementById('maturity-canvas'), {
+      type: 'radar',
+      data: {
+        labels: maturity[0]?.themes.map(t => t.name) || [],
+        datasets: orgs.filter((o, i) => maturity[i]?.themes?.length).map((o, i) => ({
+          label: o.name,
+          data: maturity[i].themes.map(t => t.score),
+          backgroundColor: 'rgba(37,99,235,0.05)',
+          borderColor: soth.map.themeColor(o.name),
+          pointBackgroundColor: soth.map.themeColor(o.name),
+          borderWidth: 1,
+        })),
+      },
+      options: {
+        responsive: true,
+        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+      },
+    });
+    return;
+  }
+
+  // Partner view (has org_id)
   if (!soth.currentProfile?.org_id) {
     document.getElementById('dash-welcome').textContent = 'You are not linked to an organisation yet.';
     document.getElementById('dash-subtitle').textContent = 'Contact an admin to assign you to an organisation.';
+    document.getElementById('village-selector').style.display = 'none';
     return;
   }
+
+  // Show village selector for partners
+  document.getElementById('village-selector').style.display = '';
 
   const orgId = soth.currentProfile.org_id;
   const orgs = await soth.data.organizations();
