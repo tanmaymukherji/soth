@@ -120,18 +120,29 @@ soth.map = {
 
   geocodeViaBharatAtlas: async function (village) {
     try {
+      const name = encodeURIComponent(village.name);
       const resp = await fetch(
-        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${encodeURIComponent(village.name)}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax,_lat,_lng&limit=10`
+        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${name}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax,vil_lgd&limit=10`
       );
       if (!resp.ok) return null;
       const data = await resp.json();
       if (!data?.data?.rows?.length) return null;
-      const match = data.data.rows.find(d =>
+      // Try exact district+state match, fall back to any match in same state
+      let match = data.data.rows.find(d =>
         d.dtname?.toLowerCase() === village.district?.toLowerCase() &&
         d.stname?.toLowerCase() === village.state?.toLowerCase()
       );
-      if (!match || match._lat == null) return null;
-      return { lat: match._lat, lng: match._lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
+      if (!match) {
+        match = data.data.rows.find(d =>
+          d.stname?.toLowerCase() === village.state?.toLowerCase()
+        );
+      }
+      if (!match) match = data.data.rows[0];
+      if (match.xmin == null) return null; // No bounding box data
+      const lat = ((parseFloat(match.ymin) || 0) + (parseFloat(match.ymax) || 0)) / 2;
+      const lng = ((parseFloat(match.xmin) || 0) + (parseFloat(match.xmax) || 0)) / 2;
+      if (!lat || !lng) return null;
+      return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
     } catch (e) { console.warn('BharatAtlas geocode error:', e); return null; }
   },
 
@@ -147,7 +158,7 @@ soth.map = {
       const data = await resp.json();
       if (data?.suggestedLocations?.length) {
         const loc = data.suggestedLocations[0];
-        return { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude), label: loc.placeAddress || loc.placeName || '', placeId: loc.placeId || '' };
+        return { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude), label: loc.placeAddress || loc.placeName || '', placeId: loc.placeId || '', source: 'mappls' };
       }
       return null;
     } catch (e) { console.warn('Geocode error:', e); return null; }

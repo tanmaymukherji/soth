@@ -593,7 +593,7 @@ soth.admin = {
     const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
 
     let html = '<div class="admin-section"><h2>Users</h2>';
-    html += '<button class="btn btn-primary" onclick="soth.admin.showUserForm()">+ Add User</button>';
+    html += '<p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">Users create their own accounts via the Login page. Admin can assign roles, orgs, and approve pending users.</p>';
     html += '<table class="param-table"><thead><tr><th>Name</th><th>Email</th><th>Org</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
     (users || []).forEach(u => {
       html += `<tr>
@@ -616,12 +616,33 @@ soth.admin = {
   },
 
   changeUserRole: async function (userId) {
-    const newRole = prompt('New role (partner, partner_admin, soth_admin):');
+    const sb = soth.sb();
+    const { data: profile } = await sb.from('profiles').select('role').eq('id', userId).single();
+    const modal = document.getElementById('admin-modal');
+    const current = profile?.role || 'partner';
+    const roles = ['partner', 'partner_admin', 'soth_admin'];
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h3>Change User Role</h3>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">Current role: <strong>${current}</strong></p>
+        <select id="new-role-select">
+          ${roles.map(r => `<option value="${r}" ${r === current ? 'selected' : ''}>${r}</option>`).join('')}
+        </select>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="soth.admin.doChangeRole('${userId}')">Save</button>
+          <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </div>`;
+    modal.classList.remove('hidden');
+  },
+
+  doChangeRole: async function (userId) {
+    const newRole = document.getElementById('new-role-select')?.value;
     if (!newRole || !['partner', 'partner_admin', 'soth_admin'].includes(newRole)) return;
     const sb = soth.sb();
-    const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
-    if (error) { soth.ui.showToast(error.message, 'error'); return; }
+    await sb.from('profiles').update({ role: newRole }).eq('id', userId);
     soth.ui.showToast('Role updated', 'success');
+    document.getElementById('admin-modal').classList.add('hidden');
     soth.admin.showSection('users');
   },
 
