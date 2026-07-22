@@ -1,4 +1,4 @@
-// SoTH Map — BharatAtlas (GeoJSON boundaries) via Leaflet, no basemap tiles
+// SoTH Map — BharatAtlas-credited map with village pins (no basemap tiles)
 
 soth.map = {
   _map: null,
@@ -8,12 +8,10 @@ soth.map = {
   _loadLeaflet: async function () {
     if (window.L) { soth.map._loaded = true; return true; }
     if (soth.map._loadPromise) return soth.map._loadPromise;
-
     soth.map._loadPromise = new Promise((resolve, reject) => {
       if (!document.getElementById('leaflet-css')) {
         const link = document.createElement('link');
-        link.id = 'leaflet-css';
-        link.rel = 'stylesheet';
+        link.id = 'leaflet-css'; link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
         document.head.appendChild(link);
       }
@@ -28,70 +26,28 @@ soth.map = {
     return soth.map._loadPromise;
   },
 
-  // Fetch GeoJSON from a URL
-  _fetchGeoJSON: async function (url) {
-    try {
-      const r = await fetch(url + '?v=20260721i');
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
-    } catch (e) {
-      console.warn('SoTH Map: failed to load', url, e);
-      return null;
-    }
-  },
-
   createMap: async function (containerId, center, zoom) {
     const el = document.getElementById(containerId);
     if (!el) return null;
-
-    try {
-      await soth.map._loadLeaflet();
-    } catch (e) {
-      el.innerHTML = '<div class="map-empty">Failed to load map library.</div>';
-      return null;
-    }
-    if (!window.L) {
-      el.innerHTML = '<div class="map-empty">Map library not available.</div>';
-      return null;
-    }
+    try { await soth.map._loadLeaflet(); }
+    catch (e) { el.innerHTML = '<div class="map-empty">Failed to load map library.</div>'; return null; }
+    if (!window.L) { el.innerHTML = '<div class="map-empty">Map library not available.</div>'; return null; }
 
     const cfg = soth.config();
     center = center || cfg.DEFAULT_MAP_CENTER || { lat: 22.9734, lng: 78.6569 };
     zoom = zoom || cfg.DEFAULT_MAP_ZOOM || 5;
 
     if (soth.map._map) { soth.map._map.remove(); soth.map._map = null; }
-    soth.map._markers.forEach(m => m?.remove?.());
-    soth.map._markers = [];
+    soth.map._markers.forEach(m => m?.remove?.()); soth.map._markers = [];
 
-    // Create map with NO tile layer (white background)
+    // Plain white background with attribution — no basemap tiles
     soth.map._map = L.map(containerId, {
       zoomControl: true,
       attributionControl: true,
     }).setView([center.lat, center.lng], zoom);
 
-    // Add India boundary + states from BharatAtlas GeoJSON
-    const [indiaGeo, statesGeo] = await Promise.all([
-      soth.map._fetchGeoJSON('data/india-boundary.geojson'),
-      soth.map._fetchGeoJSON('data/states.geojson'),
-    ]);
-
-    // India outline
-    if (indiaGeo) {
-      L.geoJSON(indiaGeo, {
-        style: { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#1e293b', weight: 2, opacity: 0.8 },
-      }).addTo(soth.map._map);
-    }
-
-    // State boundaries
-    if (statesGeo) {
-      L.geoJSON(statesGeo, {
-        style: { fill: false, color: '#94a3b8', weight: 1, opacity: 0.6 },
-      }).addTo(soth.map._map);
-    }
-
-    // Attribution
     L.control.attribution({ prefix: false }).addTo(soth.map._map);
-    soth.map._map.attributionControl.addAttribution('Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> via <a href="https://bharatlas.com" target="_blank">BharatAtlas</a>');
+    soth.map._map.attributionControl.addAttribution('Data: <a href="https://bharatlas.com" target="_blank">BharatAtlas</a> (LGD)');
 
     return soth.map._map;
   },
@@ -116,7 +72,6 @@ soth.map = {
     const marker = L.circleMarker([lat, lng], {
       radius: 7, fillColor: pinColor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
     }).addTo(soth.map._map);
-
     marker.bindPopup(popupHtml);
     if (options.onClick) marker.on('click', options.onClick);
     soth.map._markers.push(marker);
@@ -128,13 +83,10 @@ soth.map = {
     const bounds = [];
     villages.forEach(v => {
       const pin = soth.map.addVillagePin(v, org);
-      if (pin && parseFloat(v.lat) && parseFloat(v.lng)) {
-        bounds.push([parseFloat(v.lat), parseFloat(v.lng)]);
-      }
+      if (pin && parseFloat(v.lat) && parseFloat(v.lng)) bounds.push([parseFloat(v.lat), parseFloat(v.lng)]);
     });
-    if (bounds.length > 1 && soth.map._map?.fitBounds) {
+    if (bounds.length > 1 && soth.map._map?.fitBounds)
       soth.map._map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
-    }
   },
 
   clearMarkers: function () {
@@ -145,20 +97,17 @@ soth.map = {
   geocodeViaBharatAtlas: async function (village) {
     try {
       const resp = await fetch(
-        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${encodeURIComponent(village.name)}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax&limit=10`
+        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${encodeURIComponent(village.name)}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax,_lat,_lng&limit=10`
       );
       if (!resp.ok) return null;
       const data = await resp.json();
-      if (!data?.data?.length) return null;
-      const match = data.data.find(d =>
+      if (!data?.data?.rows?.length) return null;
+      const match = data.data.rows.find(d =>
         d.dtname?.toLowerCase() === village.district?.toLowerCase() &&
         d.stname?.toLowerCase() === village.state?.toLowerCase()
       );
-      if (!match || match.xmin == null) return null;
-      const lat = ((parseFloat(match.ymin) || 0) + (parseFloat(match.ymax) || 0)) / 2;
-      const lng = ((parseFloat(match.xmin) || 0) + (parseFloat(match.xmax) || 0)) / 2;
-      if (!lat || !lng) return null;
-      return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
+      if (!match || match._lat == null) return null;
+      return { lat: match._lat, lng: match._lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
     } catch (e) { console.warn('BharatAtlas geocode error:', e); return null; }
   },
 
