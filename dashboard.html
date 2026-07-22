@@ -219,15 +219,17 @@ soth.loadDashboard = async function () {
     const allParams = await soth.data.allSubParams();
 
     // Stats across all orgs
-    const { data: allVillages } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
-    const villCount = allVillages?.count || 0;
     document.getElementById('dash-stats').innerHTML = `
       <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partners</div></div>
       <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Parameters</div></div>
-      <div class="stat-card"><div class="stat-value">${villCount}</div><div class="stat-label">Villages</div></div>
-      <div class="stat-card"><div class="stat-value">${new Date().toLocaleDateString('en-IN')}</div><div class="stat-label">Last Updated</div></div>
+      <div class="stat-card"><div class="stat-value">Loading...</div><div class="stat-label">Villages</div></div>
       <div class="stat-card"><div class="stat-value">${new Date().toLocaleDateString('en-IN')}</div><div class="stat-label">Last Updated</div></div>
     `;
+    // Fetch village count separately
+    (async () => {
+      const { count } = await soth.sb().from('villages').select('*', { count: 'exact', head: true });
+      document.querySelector('#dash-stats .stat-card:nth-child(3) .stat-value').textContent = count || 0;
+    })();
 
     // Maturity overview for all orgs - bar chart (cleaner than multi-org radar)
     const maturities = await Promise.all(orgs.map(o => soth.maturity.compute(o.id)));
