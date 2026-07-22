@@ -1,4 +1,4 @@
-// SoTH Map — Leaflet + OpenStreetMap (reliable) + BharatAtlas geocoding
+// SoTH Map — BharatAtlas (GeoJSON boundaries) via Leaflet, no basemap tiles
 
 soth.map = {
   _map: null,
@@ -28,6 +28,18 @@ soth.map = {
     return soth.map._loadPromise;
   },
 
+  // Fetch GeoJSON from a URL
+  _fetchGeoJSON: async function (url) {
+    try {
+      const r = await fetch(url + '?v=20260721g');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      console.warn('SoTH Map: failed to load', url, e);
+      return null;
+    }
+  },
+
   createMap: async function (containerId, center, zoom) {
     const el = document.getElementById(containerId);
     if (!el) return null;
@@ -35,7 +47,7 @@ soth.map = {
     try {
       await soth.map._loadLeaflet();
     } catch (e) {
-      el.innerHTML = '<div class="map-empty">Failed to load map library. Check your internet connection.</div>';
+      el.innerHTML = '<div class="map-empty">Failed to load map library.</div>';
       return null;
     }
     if (!window.L) {
@@ -47,18 +59,39 @@ soth.map = {
     center = center || cfg.DEFAULT_MAP_CENTER || { lat: 22.9734, lng: 78.6569 };
     zoom = zoom || cfg.DEFAULT_MAP_ZOOM || 5;
 
-    if (soth.map._map) {
-      soth.map._map.remove();
-      soth.map._map = null;
-    }
+    if (soth.map._map) { soth.map._map.remove(); soth.map._map = null; }
     soth.map._markers.forEach(m => m?.remove?.());
     soth.map._markers = [];
 
-    soth.map._map = L.map(containerId, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &bull; Data: <a href="https://bharatlas.com">BharatAtlas</a> (LGD)',
-      maxZoom: 19,
-    }).addTo(soth.map._map);
+    // Create map with NO tile layer (white background)
+    soth.map._map = L.map(containerId, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([center.lat, center.lng], zoom);
+
+    // Add India boundary + states from BharatAtlas GeoJSON
+    const [indiaGeo, statesGeo] = await Promise.all([
+      soth.map._fetchGeoJSON('data/india-boundary.geojson'),
+      soth.map._fetchGeoJSON('data/states.geojson'),
+    ]);
+
+    // India outline
+    if (indiaGeo) {
+      L.geoJSON(indiaGeo, {
+        style: { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#1e293b', weight: 2, opacity: 0.8 },
+      }).addTo(soth.map._map);
+    }
+
+    // State boundaries
+    if (statesGeo) {
+      L.geoJSON(statesGeo, {
+        style: { fill: false, color: '#94a3b8', weight: 1, opacity: 0.6 },
+      }).addTo(soth.map._map);
+    }
+
+    // Attribution
+    L.control.attribution({ prefix: false }).addTo(soth.map._map);
+    soth.map._map.attributionControl.addAttribution('Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> via <a href="https://bharatlas.com" target="_blank">BharatAtlas</a>');
 
     return soth.map._map;
   },
@@ -81,12 +114,7 @@ soth.map = {
       </div>`;
 
     const marker = L.circleMarker([lat, lng], {
-      radius: 7,
-      fillColor: pinColor,
-      color: '#fff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.85,
+      radius: 7, fillColor: pinColor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
     }).addTo(soth.map._map);
 
     marker.bindPopup(popupHtml);
