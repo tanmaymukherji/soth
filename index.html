@@ -91,7 +91,7 @@ soth.renderMap = async function () {
         if (!hasTheme) continue;
       }
       const orgMaturity = maturity.overall;
-      const color = soth.map.maturityColor(orgMaturity);
+      const color = orgMaturity ? soth.map.maturityColor(orgMaturity) : '#94a3b8';
       soth.map.addVillagePin(v, org, {
         color,
         maturity: Math.round(orgMaturity),

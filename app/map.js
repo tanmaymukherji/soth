@@ -89,7 +89,7 @@ soth.map = {
         <strong>${soth.ui.escapeHtml(village.name)}</strong><br>
         <span style="color:#666;">${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span><br>
         ${org ? `<span style="color:#2563eb;">${soth.ui.escapeHtml(org.name)}</span>` : ''}
-        ${options.maturity != null ? `<br><span style="font-size:12px;">Maturity: ${options.maturity}%</span>` : ''}
+        ${options.maturity ? `<br><span style="font-size:12px;">Maturity: ${options.maturity}%</span>` : ''}
         ${options.detailUrl ? `<br><a href="${options.detailUrl}" style="color:#2563eb;font-size:12px;">View details </a>` : ''}
       </div>`;
 
