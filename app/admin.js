@@ -393,15 +393,28 @@ soth.admin = {
     soth.admin.showSection('proposals');
   },
 
-  renderVillages: async function (container) {
+  renderVillages: async function (container, page) {
     const sb = soth.sb();
+    page = page || 0;
+    const PER_PAGE = 100;
+    const offset = page * PER_PAGE;
+
     const { data: villages } = await sb.from('villages').select('*')
       .order('state', { ascending: true }).order('district', { ascending: true }).order('name', { ascending: true })
-      .limit(500);
+      .range(offset, offset + PER_PAGE - 1);
 
-    let html = '<div class="admin-section"><h2>Villages (showing 500)</h2>';
-    html += `<button class="btn btn-primary" onclick="soth.admin.showVillageForm()">+ Add Village</button>`;
-    html += '<table class="param-table"><thead><tr><th>Name</th><th>Block/GP</th><th>District</th><th>State</th><th>Coordinates</th><th>Geocode</th><th>Actions</th></tr></thead><tbody>';
+    const { count } = await sb.from('villages').select('*', { count: 'exact', head: true });
+    const totalPages = Math.ceil((count || 0) / PER_PAGE);
+
+    let html = '<div class="admin-section"><h2>Villages</h2>';
+    html += `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <input type="text" id="village-search-input" placeholder="Search by name..." style="flex:1;min-width:200px;"
+        oninput="soth.admin.filterVillages(this.value)">
+      <button class="btn btn-primary" onclick="soth.admin.showVillageForm()">+ Add Village</button>
+    </div>`;
+    html += `<p style="font-size:12px;color:var(--gray-500);">Showing ${offset + 1}-${Math.min(offset + PER_PAGE, count || 0)} of ${count || 0} villages</p>`;
+    html += '<div id="village-table-container" style="max-height:500px;overflow-y:auto;">';
+    html += '<table class="param-table" id="village-table"><thead><tr><th>Name</th><th>Block/GP</th><th>District</th><th>State</th><th>Coordinates</th><th>Geocode</th><th>Actions</th></tr></thead><tbody>';
     (villages || []).forEach(v => {
       html += `<tr>
         <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
@@ -417,6 +430,47 @@ soth.admin = {
       </tr>`;
     });
     html += '</tbody></table></div>';
+
+    // Pagination
+    html += '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;">';
+    if (page > 0) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(container, ${page - 1})">Previous</button>`;
+    html += `<span style="font-size:13px;color:var(--gray-500);">Page ${page + 1} of ${totalPages}</span>`;
+    if (page < totalPages - 1) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(container, ${page + 1})">Next</button>`;
+    html += '</div></div>';
+    container.innerHTML = html;
+  },
+
+  _allVillages: null,
+
+  filterVillages: async function (query) {
+    const q = query.toLowerCase().trim();
+    const container = document.getElementById('village-table-container');
+    if (!container) return;
+    const sb = soth.sb();
+    if (!soth.admin._allVillages) {
+      const { data } = await sb.from('villages').select('*').order('name').limit(2000);
+      soth.admin._allVillages = data || [];
+    }
+    const filtered = q ? soth.admin._allVillages.filter(v =>
+      v.name.toLowerCase().includes(q) || v.district.toLowerCase().includes(q) || v.state.toLowerCase().includes(q)
+    ) : soth.admin._allVillages;
+    let html = '<table class="param-table"><thead><tr><th>Name</th><th>Block/GP</th><th>District</th><th>State</th><th>Coordinates</th><th>Geocode</th><th>Actions</th></tr></thead><tbody>';
+    filtered.slice(0, 200).forEach(v => {
+      html += `<tr>
+        <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
+        <td>${soth.ui.escapeHtml(v.block || v.gram_panchayat || '')}</td>
+        <td>${soth.ui.escapeHtml(v.district)}</td>
+        <td>${soth.ui.escapeHtml(v.state)}</td>
+        <td>${v.lat ? `${v.lat}, ${v.lng}` : '-'}</td>
+        <td><span class="status-badge status-${v.geocode_status || 'pending'}">${v.geocode_status || 'pending'}</span></td>
+        <td>
+          <button class="btn btn-small" onclick="soth.admin.showVillageForm('${v.id}')">Edit</button>
+          <button class="btn btn-small btn-outline" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    if (filtered.length > 200) html += `<p style="font-size:12px;color:var(--gray-500);">Showing 200 of ${filtered.length} matches</p>`;
     container.innerHTML = html;
   },
 
@@ -536,22 +590,28 @@ soth.admin = {
   renderUsers: async function (container) {
     const sb = soth.sb();
     const { data: users } = await sb.from('profiles').select('*, organizations(name)').limit(200);
+    const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
 
     let html = '<div class="admin-section"><h2>Users</h2>';
+    html += '<button class="btn btn-primary" onclick="soth.admin.showUserForm()">+ Add User</button>';
     html += '<table class="param-table"><thead><tr><th>Name</th><th>Email</th><th>Org</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
     (users || []).forEach(u => {
       html += `<tr>
         <td>${soth.ui.escapeHtml(u.full_name || '')}</td>
         <td>${soth.ui.escapeHtml(u.email || u.id.substring(0, 12))}</td>
-        <td>${soth.ui.escapeHtml(u.organizations?.name || u.org_id?.substring(0, 8) || '')}</td>
+        <td>${soth.ui.escapeHtml(u.organizations?.name || u.org_id?.substring(0, 8) || '-')}</td>
         <td><span class="status-badge">${u.role}</span></td>
         <td><span class="status-badge status-${u.status}">${u.status}</span></td>
-        <td>
-          <button class="btn btn-small" onclick="soth.admin.changeUserRole('${u.id}')">Change Role</button>
+        <td nowrap>
+          <button class="btn btn-small" onclick="soth.admin.changeUserRole('${u.id}')">Role</button>
+          <button class="btn btn-small btn-outline" onclick="soth.admin.changeUserOrg('${u.id}')">Org</button>
+          <button class="btn btn-small btn-outline" onclick="soth.admin.approveUser('${u.id}')">${u.status === 'pending' ? 'Approve' : ''}</button>
         </td>
       </tr>`;
     });
-    html += '</tbody></table></div>';
+    html += '</tbody></table>';
+    html += '<p style="font-size:12px;color:var(--gray-500);margin-top:8px;">Users sign up with status <strong>pending</strong>. Admin must approve and assign org for org-level data access.</p>';
+    html += '</div>';
     container.innerHTML = html;
   },
 
@@ -562,6 +622,40 @@ soth.admin = {
     const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
     if (error) { soth.ui.showToast(error.message, 'error'); return; }
     soth.ui.showToast('Role updated', 'success');
+    soth.admin.showSection('users');
+  },
+
+  changeUserOrg: async function (userId) {
+    const sb = soth.sb();
+    const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
+    const modal = document.getElementById('admin-modal');
+    const opts = orgs.map(o => `<option value="${o.id}">${soth.ui.escapeHtml(o.name)}</option>`).join('');
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h3>Assign Organisation</h3>
+        <select id="assign-org-select">${opts}</select>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="soth.admin.doAssignOrg('${userId}')">Assign</button>
+          <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </div>`;
+    modal.classList.remove('hidden');
+  },
+
+  doAssignOrg: async function (userId) {
+    const orgId = document.getElementById('assign-org-select')?.value;
+    if (!orgId) return;
+    const sb = soth.sb();
+    await sb.from('profiles').update({ org_id: orgId }).eq('id', userId);
+    soth.ui.showToast('Org assigned', 'success');
+    document.getElementById('admin-modal').classList.add('hidden');
+    soth.admin.showSection('users');
+  },
+
+  approveUser: async function (userId) {
+    const sb = soth.sb();
+    await sb.from('profiles').update({ status: 'active' }).eq('id', userId);
+    soth.ui.showToast('User approved', 'success');
     soth.admin.showSection('users');
   },
 

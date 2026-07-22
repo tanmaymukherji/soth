@@ -128,9 +128,10 @@ soth.auth = {
       if (!existing) {
         await sb.from('profiles').upsert({
           id: user.id,
+          email: user.email || '',
           full_name: fullName || user.user_metadata?.full_name || '',
           role: user.email === (soth.config().BOOTSTRAP_ADMIN_EMAIL || '') ? 'soth_admin' : 'partner',
-          status: 'active'
+          status: user.email === (soth.config().BOOTSTRAP_ADMIN_EMAIL || '') ? 'active' : 'pending',
         }, { onConflict: 'id' });
       }
       await soth.auth.loadProfile();
