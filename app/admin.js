@@ -539,33 +539,119 @@ soth.admin = {
     if (!v) return;
 
     // Show immediate feedback
-    const toastId = 'geocode-' + Date.now();
     soth.ui.showToast('Searching LGD database for ' + v.name + '...', 'info');
-    // Disable the geocode button
     const btns = document.querySelectorAll(`[onclick*="geocodeSingle('${villageId}')"]`);
     btns.forEach(b => { b.textContent = 'Searching...'; b.disabled = true; });
 
-    // Geocode via BharatAtlas LGD (government data)
+    // Step 1: Try BharatAtlas LGD with name + district matching
     let result = await soth.map.geocodeViaBharatAtlas(v);
-    // Fallback: GramEEE-hosted LGD data
-    if (!result?.lat) result = await soth.map.geocodeViaGramEEE(v);
-
     if (result?.lat) {
-      await sb.from('villages').update({
-        lat: result.lat, lng: result.lng,
-        geocode_source: result.source || 'unknown',
-        geocode_label: result.label || '',
-        geocoded_at: new Date().toISOString(),
-        geocode_status: 'geocoded'
-      }).eq('id', villageId);
-      soth.ui.showToast(`Geocoded via ${result.source}!`, 'success');
-    } else {
-      await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', villageId);
-      soth.ui.showToast('Could not geocode with any method', 'error');
+      await soth.map._applyGeocode(v, result);
+      soth.ui.showToast('Geocoded via LGD!', 'success');
+      await new Promise(r => setTimeout(r, 500));
+      soth.admin.showSection('villages');
+      return;
     }
-    // Brief delay so user sees the toast before section refresh
+
+    // Step 2: Not found - search LGD for similar names to let user pick
+    // Re-enable buttons that were disabled
+    btns.forEach(b => { b.textContent = 'Geocode'; b.disabled = false; });
+    soth.admin._showGeocodePicker(v, villageId);
+  },
+
+  // Show a picker modal with LGD search results when exact match fails
+  _showGeocodePicker: async function (v, villageId) {
+    const modal = document.getElementById('admin-modal');
+    if (!modal) return;
+
+    // Search BharatAtlas with cleaned name (broad search, any district)
+    let results = [];
+    const searchName = v.name.replace(/\([^)]*\)/g, '').trim().split(/[,\s]+/).filter(w => w.length > 2)[0] || v.name.trim();
+    try {
+      const r = await fetch(
+        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${encodeURIComponent(searchName)}&select=vilname11,dtname,stname,sdtname,block_name,gp_name,xmin,ymin,xmax,ymax,vil_lgd&limit=30`
+      );
+      if (r.ok) {
+        const data = await r.json();
+        results = data?.data?.rows || [];
+      }
+    } catch (e) {}
+
+    let html = `<div class="modal-content" style="max-width:650px;">
+      <h3>Geocode: ${v.name}</h3>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">
+        Village not found in LGD database. Select a matching entry below, or use the district center.
+      </p>`;
+
+    if (results.length) {
+      html += `<div style="max-height:350px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:4px;margin-bottom:12px;">
+        <table class="param-table"><thead><tr><th>Village</th><th>Block</th><th>District</th><th>State</th><th>Action</th></tr></thead><tbody>`;
+      const seen = new Set();
+      results.forEach(row => {
+        if (!row.xmin || seen.has(row.vilname11 + row.dtname)) return;
+        seen.add(row.vilname11 + row.dtname);
+        const lat = ((parseFloat(row.ymin) || 0) + (parseFloat(row.ymax) || 0)) / 2;
+        const lng = ((parseFloat(row.xmin) || 0) + (parseFloat(row.xmax) || 0)) / 2;
+        const block = row.block_name || row.sdtname || '-';
+        html += `<tr>
+          <td><strong>${soth.ui.escapeHtml(row.vilname11)}</strong></td>
+          <td>${soth.ui.escapeHtml(block)}</td>
+          <td>${soth.ui.escapeHtml(row.dtname)}</td>
+          <td>${soth.ui.escapeHtml(row.stname)}</td>
+          <td><button class="btn btn-small btn-primary" onclick="soth.admin._pickGeocode('${villageId}',${lat},${lng},'${soth.ui.escapeHtml(row.vilname11)}')">Use</button></td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += `<p class="empty-state">No similar villages found in LGD database.</p>`;
+    }
+
+    // District and state fallback options
+    html += `<div style="border-top:1px solid var(--gray-200);padding-top:12px;margin-top:4px;">
+      <p style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--gray-600);">Or use approximate coordinates:</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-outline" onclick="soth.admin._pickDistrictGeocode('${villageId}','${soth.ui.escapeHtml(v.district)}','${soth.ui.escapeHtml(v.state)}')">District Center (${soth.ui.escapeHtml(v.district)})</button>
+      </div>
+    </div>`;
+
+    html += `<div class="form-actions" style="margin-top:12px;">
+      <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+    </div></div>`;
+
+    modal.innerHTML = html;
+    modal.classList.remove('hidden');
+  },
+
+  // User picked a specific village from the LGD results
+  _pickGeocode: async function (villageId, lat, lng, label) {
+    await soth.map._applyGeocode({ id: villageId }, { lat, lng, label: label + ' (LGD selection)', source: 'bharatlas' });
+    document.getElementById('admin-modal').classList.add('hidden');
+    soth.ui.showToast('Geocoded!', 'success');
     await new Promise(r => setTimeout(r, 500));
     soth.admin.showSection('villages');
+  },
+
+  // User chose district center as fallback
+  _pickDistrictGeocode: async function (villageId, district, state) {
+    const q = encodeURIComponent(district + ', ' + state + ', India');
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+        headers: { 'User-Agent': 'SoTH/1.0' }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data?.length) {
+          const loc = data[0];
+          await soth.map._applyGeocode({ id: villageId }, { lat: parseFloat(loc.lat), lng: parseFloat(loc.lon), label: district + ' district, ' + state, source: 'district-fallback' });
+          document.getElementById('admin-modal').classList.add('hidden');
+          soth.ui.showToast('Geocoded to district center!', 'success');
+          await new Promise(r => setTimeout(r, 500));
+          soth.admin.showSection('villages');
+          return;
+        }
+      }
+    } catch (e) {}
+    soth.ui.showToast('Could not geocode district', 'error');
   },
 
   renderCaptures: async function (container) {

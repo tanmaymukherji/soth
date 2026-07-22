@@ -221,6 +221,22 @@ soth.map = {
     } catch (e) { return null; }
   },
 
+  // Apply geocoding result to a village in Supabase
+  _applyGeocode: async function (village, result) {
+    if (!village?.id || !result?.lat) return;
+    try {
+      const sb = soth.sb();
+      if (!sb) return;
+      await sb.from('villages').update({
+        lat: result.lat, lng: result.lng,
+        geocode_source: result.source || 'unknown',
+        geocode_label: result.label || '',
+        geocoded_at: new Date().toISOString(),
+        geocode_status: 'geocoded'
+      }).eq('id', village.id);
+    } catch (e) { console.warn('applyGeocode error:', e); }
+  },
+
   // Clean village name and generate variations
     const key = soth.config().MAPPLS_MAP_KEY;
     if (!key) return null;
