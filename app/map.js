@@ -118,34 +118,84 @@ soth.map = {
     soth.map._markers = [];
   },
 
-  geocodeViaBharatAtlas: async function (village) {
-    try {
-      const name = encodeURIComponent(village.name);
-      const resp = await fetch(
-        `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${name}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax,vil_lgd&limit=10`
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      if (!data?.data?.rows?.length) return null;
-      // Try exact district+state match, fall back to any match in same state
-      let match = data.data.rows.find(d =>
-        d.dtname?.toLowerCase() === village.district?.toLowerCase() &&
-        d.stname?.toLowerCase() === village.state?.toLowerCase()
-      );
-      if (!match) {
-        match = data.data.rows.find(d =>
-          d.stname?.toLowerCase() === village.state?.toLowerCase()
-        );
-      }
-      if (!match) match = data.data.rows[0];
-      if (match.xmin == null) return null; // No bounding box data
-      const lat = ((parseFloat(match.ymin) || 0) + (parseFloat(match.ymax) || 0)) / 2;
-      const lng = ((parseFloat(match.xmin) || 0) + (parseFloat(match.xmax) || 0)) / 2;
-      if (!lat || !lng) return null;
-      return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
-    } catch (e) { console.warn('BharatAtlas geocode error:', e); return null; }
+  // Helper: clean village name (remove parenthetical suffixes, extra spaces)
+  _cleanVillageName: function (name) {
+    let n = name.replace(/\([^)]*\)/g, '').replace(/[_,]/g, ' ').trim();
+    n = n.replace(/\s+/g, ' ').trim();
+    return n;
   },
 
+  // Helper: generate name variations for LGD lookup
+  _nameVariations: function (name) {
+    const n = name.trim();
+    const vars = [n];
+    // Remove trailing 'i' → try 'e' (Indian village name pattern)
+    if (n.endsWith('i')) vars.push(n.slice(0, -1) + 'e');
+    if (n.endsWith('y')) vars.push(n.slice(0, -1) + 'i');
+    if (n.endsWith('u')) vars.push(n.slice(0, -1) + 'a');
+    // Remove trailing 'a'
+    if (n.endsWith('a')) vars.push(n.slice(0, -1));
+    if (n.endsWith('e')) vars.push(n.slice(0, -1));
+    // Double to single letters
+    for (const pair of [['ll', 'l'], ['tt', 't'], ['pp', 'p'], ['nn', 'n'], ['mm', 'm'], ['rr', 'r']]) {
+      if (n.includes(pair[0])) vars.push(n.replace(pair[0], pair[1]));
+    }
+    return [...new Set(vars)];
+  },
+
+  // Try to geocode via BharatAtlas LGD village polygons (bounding box centroid)
+  geocodeViaBharatAtlas: async function (village) {
+    const baseName = soth.map._cleanVillageName(village.name);
+    const nameForms = soth.map._nameVariations(baseName);
+    // Also add the raw name
+    if (!nameForms.includes(village.name.trim())) nameForms.unshift(village.name.trim());
+    if (!nameForms.includes(baseName)) nameForms.unshift(baseName);
+
+    for (const nf of nameForms) {
+      try {
+        const resp = await fetch(
+          `https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=${encodeURIComponent(nf)}&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax,vil_lgd&limit=10`
+        );
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        if (!data?.data?.rows?.length) continue;
+        // Try exact district+state match, then state-only, then first result
+        let match = data.data.rows.find(d =>
+          d.dtname?.toLowerCase() === village.district?.toLowerCase() &&
+          d.stname?.toLowerCase() === village.state?.toLowerCase()
+        );
+        if (!match) {
+          match = data.data.rows.find(d =>
+            d.stname?.toLowerCase() === village.state?.toLowerCase()
+          );
+        }
+        if (!match) match = data.data.rows[0];
+        if (match.xmin == null) continue;
+        const lat = ((parseFloat(match.ymin) || 0) + (parseFloat(match.ymax) || 0)) / 2;
+        const lng = ((parseFloat(match.xmin) || 0) + (parseFloat(match.xmax) || 0)) / 2;
+        if (!lat || !lng) continue;
+        return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
+      } catch (e) { /* try next variation */ }
+    }
+    return null;
+  },
+
+  // Geocode via OpenStreetMap Nominatim (free, reliable for Indian villages)
+  geocodeViaNominatim: async function (village) {
+    try {
+      const query = encodeURIComponent(`${soth.map._cleanVillageName(village.name)}, ${village.district}, ${village.state}, India`);
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`, {
+        headers: { 'User-Agent': 'SoTH/1.0' }
+      });
+      if (!resp.ok) { console.warn('Nominatim:', resp.status); return null; }
+      const data = await resp.json();
+      if (!data?.length) return null;
+      const loc = data[0];
+      return { lat: parseFloat(loc.lat), lng: parseFloat(loc.lon), label: loc.display_name || `${village.name}, ${village.district}`, source: 'nominatim' };
+    } catch (e) { console.warn('Nominatim error:', e); return null; }
+  },
+
+  // Geocode via Mappls Search API (requires MAPPLS_MAP_KEY)
   geocodeVillage: async function (village) {
     const key = soth.config().MAPPLS_MAP_KEY;
     if (!key) return null;

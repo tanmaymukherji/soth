@@ -523,27 +523,23 @@ soth.admin = {
     const { data: v } = await sb.from('villages').select('*').eq('id', villageId).single();
     if (!v) return;
 
-    // Try BharatAtlas first (approximate centroid from LGD village polygon)
+    // Try each geocoding method in sequence until one works
     let result = await soth.map.geocodeViaBharatAtlas(v);
-    let source = 'bharatlas';
-
-    // Fall back to Mappls geocoding
-    if (!result?.lat) {
-      result = await soth.map.geocodeVillage(v);
-      source = 'mappls';
-    }
+    if (!result?.lat) result = await soth.map.geocodeViaNominatim(v);
+    if (!result?.lat) result = await soth.map.geocodeVillage(v);
 
     if (result?.lat) {
       await sb.from('villages').update({
         lat: result.lat, lng: result.lng,
-        geocode_source: source, geocode_place_id: result.placeId || '',
-        geocode_label: result.label || '', geocoded_at: new Date().toISOString(),
+        geocode_source: result.source || 'unknown',
+        geocode_label: result.label || '',
+        geocoded_at: new Date().toISOString(),
         geocode_status: 'geocoded'
       }).eq('id', villageId);
-      soth.ui.showToast(`Geocoded via ${source}!`, 'success');
+      soth.ui.showToast(`Geocoded via ${result.source}!`, 'success');
     } else {
       await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', villageId);
-      soth.ui.showToast('Could not geocode with BharatAtlas or Mappls', 'error');
+      soth.ui.showToast('Could not geocode with any method', 'error');
     }
     soth.admin.showSection('villages');
   },
@@ -718,25 +714,24 @@ soth.admin = {
 
     let count = 0;
     for (const v of (pending || [])) {
-      // Try BharatAtlas first (centroid from LGD village polygon bounds)
+      // Try each geocoding method in sequence
       let result = await soth.map.geocodeViaBharatAtlas(v);
-      let source = 'bharatlas';
-      if (!result?.lat) {
-        result = await soth.map.geocodeVillage(v);
-        source = 'mappls';
-      }
+      if (!result?.lat) result = await soth.map.geocodeViaNominatim(v);
+      if (!result?.lat) result = await soth.map.geocodeVillage(v);
+
       if (result?.lat) {
         await sb.from('villages').update({
           lat: result.lat, lng: result.lng,
-          geocode_source: source, geocode_place_id: result.placeId || '',
-          geocode_label: result.label || '', geocoded_at: new Date().toISOString(),
+          geocode_source: result.source || 'unknown',
+          geocode_label: result.label || '',
+          geocoded_at: new Date().toISOString(),
           geocode_status: 'geocoded'
         }).eq('id', v.id);
         count++;
       } else {
         await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', v.id);
       }
-      // Throttle
+      // Throttle to avoid rate limits
       await new Promise(r => setTimeout(r, 400));
     }
 
