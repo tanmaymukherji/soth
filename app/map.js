@@ -143,11 +143,10 @@ soth.map = {
     return [...new Set(vars)];
   },
 
-  // Try to geocode via BharatAtlas LGD village polygons (bounding box centroid)
+  // Geocode via BharatAtlas LGD (primary, uses government LGD data)
   geocodeViaBharatAtlas: async function (village) {
     const baseName = soth.map._cleanVillageName(village.name);
     const nameForms = soth.map._nameVariations(baseName);
-    // Also add the raw name
     if (!nameForms.includes(village.name.trim())) nameForms.unshift(village.name.trim());
     if (!nameForms.includes(baseName)) nameForms.unshift(baseName);
 
@@ -159,7 +158,6 @@ soth.map = {
         if (!resp.ok) continue;
         const data = await resp.json();
         if (!data?.data?.rows?.length) continue;
-        // Try exact district+state match, then state-only, then first result
         let match = data.data.rows.find(d =>
           d.dtname?.toLowerCase() === village.district?.toLowerCase() &&
           d.stname?.toLowerCase() === village.state?.toLowerCase()
@@ -174,29 +172,11 @@ soth.map = {
         const lat = ((parseFloat(match.ymin) || 0) + (parseFloat(match.ymax) || 0)) / 2;
         const lng = ((parseFloat(match.xmin) || 0) + (parseFloat(match.xmax) || 0)) / 2;
         if (!lat || !lng) continue;
-        return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (BharatAtlas)`, source: 'bharatlas' };
+        return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (LGD via BharatAtlas)`, source: 'bharatlas' };
       } catch (e) { /* try next variation */ }
     }
     return null;
   },
-
-  // Geocode via OpenStreetMap Nominatim (free, reliable for Indian villages)
-  geocodeViaNominatim: async function (village) {
-    try {
-      const query = encodeURIComponent(`${soth.map._cleanVillageName(village.name)}, ${village.district}, ${village.state}, India`);
-      const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`, {
-        headers: { 'User-Agent': 'SoTH/1.0' }
-      });
-      if (!resp.ok) { console.warn('Nominatim:', resp.status); return null; }
-      const data = await resp.json();
-      if (!data?.length) return null;
-      const loc = data[0];
-      return { lat: parseFloat(loc.lat), lng: parseFloat(loc.lon), label: loc.display_name || `${village.name}, ${village.district}`, source: 'nominatim' };
-    } catch (e) { console.warn('Nominatim error:', e); return null; }
-  },
-
-  // Geocode via Mappls Search API (requires MAPPLS_MAP_KEY)
-  geocodeVillage: async function (village) {
     const key = soth.config().MAPPLS_MAP_KEY;
     if (!key) return null;
     try {

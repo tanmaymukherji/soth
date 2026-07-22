@@ -492,6 +492,10 @@ soth.admin = {
           <label>Block<input type="text" id="v-block" value="${soth.ui.escapeHtml(v.block || '')}"></label>
           <label>District *<input type="text" id="v-district" value="${soth.ui.escapeHtml(v.district)}" required></label>
           <label>State *<input type="text" id="v-state" value="${soth.ui.escapeHtml(v.state)}" required></label>
+          <div style="display:flex;gap:8px;">
+            <label style="flex:1;">Latitude<input type="number" id="v-lat" step="any" value="${v.lat != null ? v.lat : ''}" placeholder="e.g. 14.3538"></label>
+            <label style="flex:1;">Longitude<input type="number" id="v-lng" step="any" value="${v.lng != null ? v.lng : ''}" placeholder="e.g. 77.3083"></label>
+          </div>
           ${villageId ? `<input type="hidden" id="v-id" value="${villageId}">` : ''}
           <div class="form-actions"><button type="submit" class="btn btn-primary">Save</button>
             <button type="button" class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
@@ -501,6 +505,8 @@ soth.admin = {
     modal.classList.remove('hidden');
     document.getElementById('village-form').onsubmit = async function (e) {
       e.preventDefault();
+      const latVal = document.getElementById('v-lat')?.value;
+      const lngVal = document.getElementById('v-lng')?.value;
       const payload = {
         name: document.getElementById('v-name').value.trim(),
         gram_panchayat: document.getElementById('v-gp').value.trim(),
@@ -508,6 +514,15 @@ soth.admin = {
         district: document.getElementById('v-district').value.trim(),
         state: document.getElementById('v-state').value.trim()
       };
+      const lat = parseFloat(latVal);
+      const lng = parseFloat(lngVal);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        payload.lat = lat;
+        payload.lng = lng;
+        payload.geocode_status = 'geocoded';
+        payload.geocode_source = 'manual';
+        payload.geocoded_at = new Date().toISOString();
+      }
       let error;
       if (villageId) ({ error } = await sb.from('villages').update(payload).eq('id', villageId));
       else ({ error } = await sb.from('villages').insert(payload));
@@ -523,10 +538,8 @@ soth.admin = {
     const { data: v } = await sb.from('villages').select('*').eq('id', villageId).single();
     if (!v) return;
 
-    // Try each geocoding method in sequence until one works
+    // Geocode via BharatAtlas LGD (government data)
     let result = await soth.map.geocodeViaBharatAtlas(v);
-    if (!result?.lat) result = await soth.map.geocodeViaNominatim(v);
-    if (!result?.lat) result = await soth.map.geocodeVillage(v);
 
     if (result?.lat) {
       await sb.from('villages').update({
@@ -684,7 +697,7 @@ soth.admin = {
 
     let html = '<div class="admin-section"><h2>Geocoding Queue (' + (pending?.length || 0) + ' remaining)</h2>';
     html += `<button class="btn btn-primary" onclick="soth.admin.batchGeocode()">Batch Geocode All</button>`;
-    html += `<p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Uses BharatAtlas LGD village boundaries first, then Mappls search as fallback.</p>`;
+    html += `<p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Uses BharatAtlas LGD data (Government Local Government Directory). Edit village form allows manual coordinate entry.</p>`;
     if (!pending?.length) {
       html += '<p class="empty-state">All villages geocoded!</p>';
     } else {
@@ -714,10 +727,7 @@ soth.admin = {
 
     let count = 0;
     for (const v of (pending || [])) {
-      // Try each geocoding method in sequence
       let result = await soth.map.geocodeViaBharatAtlas(v);
-      if (!result?.lat) result = await soth.map.geocodeViaNominatim(v);
-      if (!result?.lat) result = await soth.map.geocodeVillage(v);
 
       if (result?.lat) {
         await sb.from('villages').update({
