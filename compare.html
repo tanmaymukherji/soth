@@ -19,11 +19,13 @@
 
 <header class="app-header">
   <div class="brand">Sense of <span>The House</span></div>
-  <nav>
+    <nav>
     <a href="index.html">Map</a>
+    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
     <a href="superset.html">Superset</a>
     <a href="compare.html">Compare</a>
-    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+    <a href="admin.html" id="nav-admin" style="display:none">Admin</a>
+    <span id="user-label" style="display:none;font-size:12px;color:var(--gray-500);"></span>
     <a href="login.html" id="nav-login">Login</a>
     <button id="nav-logout" style="display:none" onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
   </nav>
@@ -106,10 +108,17 @@ soth.renderCompare = async function () {
       '<p class="empty-state" style="margin-top:40px;"><a href="login.html">Log in</a> to compare partners.</p>';
     return;
   }
-  document.getElementById('nav-dashboard').style.display = '';
-  document.getElementById('nav-login').textContent = soth.currentUser.email;
-  document.getElementById('nav-login').href = 'dashboard.html';
-  document.getElementById('nav-logout').style.display = '';
+
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').style.display = 'none';
+    document.getElementById('nav-logout').style.display = '';
+    document.getElementById('user-label').textContent = soth.currentUser.email;
+    document.getElementById('user-label').style.display = '';
+    if (soth.currentProfile?.role === 'soth_admin') {
+      document.getElementById('nav-admin').style.display = '';
+    }
+  }
 
   const orgs = await soth.data.organizations();
   const selA = document.getElementById('compare-org-a');

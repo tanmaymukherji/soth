@@ -20,11 +20,13 @@
 
 <header class="app-header">
   <div class="brand">Sense of <span>The House</span></div>
-  <nav>
+    <nav>
     <a href="index.html">Map</a>
+    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
     <a href="superset.html">Superset</a>
     <a href="compare.html">Compare</a>
-    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+    <a href="admin.html" id="nav-admin" style="display:none">Admin</a>
+    <span id="user-label" style="display:none;font-size:12px;color:var(--gray-500);"></span>
     <a href="login.html" id="nav-login">Login</a>
     <button id="nav-logout" style="display:none" onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
   </nav>
@@ -105,13 +107,13 @@ soth.renderStats = async function () {
   const orgs = await soth.data.organizations();
   const allParams = await soth.data.allSubParams();
   const { data: allVillages } = await soth.sb().from('villages').select('*').limit(1);
-  const { data: vCount } = await soth.sb().from('villages').select('id', { count: 'exact', head: true });
+  const { count: vCount } = await soth.sb().from('villages').select('*', { count: 'exact', head: true });
 
   const ribbon = document.getElementById('stats-ribbon');
   ribbon.innerHTML = `
     <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
     <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
-    <div class="stat-card"><div class="stat-value">${vCount?.count || 0}</div><div class="stat-label">Villages</div></div>
+      <div class="stat-card"><div class="stat-value">${vCount || 0}</div><div class="stat-label">Villages</div></div>
     <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
   `;
 };
@@ -161,12 +163,17 @@ soth.renderMaturityCharts = async function () {
 (async function initPage() {
   try {
     await soth.auth.init();
-    if (soth.currentUser) {
-      document.getElementById('nav-dashboard').style.display = '';
-      document.getElementById('nav-login').textContent = soth.currentUser.email;
-      document.getElementById('nav-login').href = 'dashboard.html';
-      document.getElementById('nav-logout').style.display = '';
+
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').style.display = 'none';
+    document.getElementById('nav-logout').style.display = '';
+    document.getElementById('user-label').textContent = soth.currentUser.email;
+    document.getElementById('user-label').style.display = '';
+    if (soth.currentProfile?.role === 'soth_admin') {
+      document.getElementById('nav-admin').style.display = '';
     }
+  }
 
     const themes = await soth.data.themes();
     const themeSelect = document.getElementById('map-theme-filter');
