@@ -30,16 +30,27 @@ function writeSQL(sql) {
 // Try to find village in BharatAtlas LGD by name with multiple name formats
 async function findVillage(name, district, state) {
   // Build list of name formats to try
-  const names = [name.trim()];
-  const cleaned = name.replace(/[()]/g, '').trim();
-  if (cleaned !== names[0]) names.push(cleaned);
-  const noParen = name.replace(/\([^)]*\)/g, '').trim();
-  if (noParen && noParen !== cleaned) names.push(noParen);
-  const upper = name.toUpperCase().trim();
-  if (upper !== names[0]) names.push(upper);
-  // Split into words and try each
-  const words = noParen.split(/[,\s]+/).filter(w => w.length > 2);
-  names.push(...words);
+  function variations(n) {
+    const v = [n.trim()];
+    const cleaned = n.replace(/[()]/g, '').trim();
+    if (cleaned !== v[0]) v.push(cleaned);
+    const noParen = n.replace(/\([^)]*\)/g, '').trim();
+    if (noParen && noParen !== cleaned) v.push(noParen);
+    v.push(n.toUpperCase().trim());
+    const words = noParen.split(/[,\s]+/).filter(w => w.length > 2);
+    v.push(...words);
+    // Name endings
+    if (n.endsWith('i')) v.push(n.slice(0, -1) + 'e');
+    if (n.endsWith('y')) v.push(n.slice(0, -1) + 'i');
+    if (n.endsWith('a')) v.push(n.slice(0, -1));
+    if (n.endsWith('e')) v.push(n.slice(0, -1));
+    // Double letters
+    for (const pair of [['ll','l'],['tt','t'],['pp','p'],['nn','n'],['mm','m'],['rr','r']]) {
+      if (n.includes(pair[0])) v.push(n.replace(pair[0], pair[1]));
+    }
+    return [...new Set(v)];
+  }
+  const names = variations(name);
 
   const seen = new Set();
   for (const n of names) {

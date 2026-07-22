@@ -538,6 +538,13 @@ soth.admin = {
     const { data: v } = await sb.from('villages').select('*').eq('id', villageId).single();
     if (!v) return;
 
+    // Show immediate feedback
+    const toastId = 'geocode-' + Date.now();
+    soth.ui.showToast('Searching LGD database for ' + v.name + '...', 'info');
+    // Disable the geocode button
+    const btns = document.querySelectorAll(`[onclick*="geocodeSingle('${villageId}')"]`);
+    btns.forEach(b => { b.textContent = 'Searching...'; b.disabled = true; });
+
     // Geocode via BharatAtlas LGD (government data)
     let result = await soth.map.geocodeViaBharatAtlas(v);
     // Fallback: GramEEE-hosted LGD data
@@ -556,6 +563,8 @@ soth.admin = {
       await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', villageId);
       soth.ui.showToast('Could not geocode with any method', 'error');
     }
+    // Brief delay so user sees the toast before section refresh
+    await new Promise(r => setTimeout(r, 500));
     soth.admin.showSection('villages');
   },
 
