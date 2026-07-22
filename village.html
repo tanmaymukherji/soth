@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Village — SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721k">
-<script src="config.js?v=20260721k"></script>
+<title>Village â€” SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260721l">
+<script src="config.js?v=20260721l"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
-<script src="data/lgd.js?v=20260721k"></script>
-<script src="app/core.js?v=20260721k"></script>
-<script src="app/map.js?v=20260721k"></script>
-<script src="app/maturity.js?v=20260721k"></script>
-<script src="app/capture.js?v=20260721k"></script>
+<script src="data/lgd.js?v=20260721l"></script>
+<script src="app/core.js?v=20260721l"></script>
+<script src="app/map.js?v=20260721l"></script>
+<script src="app/maturity.js?v=20260721l"></script>
+<script src="app/capture.js?v=20260721l"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -74,9 +74,9 @@
     document.querySelector('.app-content').insertAdjacentHTML('afterbegin',
       `<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
         <div><strong>${soth.ui.escapeHtml(name)}</strong>
-          ${village ? `<span style="color:var(--gray-500);font-size:13px;"> — ${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span>` : ''}
+          ${village ? `<span style="color:var(--gray-500);font-size:13px;"> â€” ${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span>` : ''}
         </div>
-        <a href="dashboard.html" class="btn btn-outline btn-small">← Back</a>
+        <a href="dashboard.html" class="btn btn-outline btn-small">â† Back</a>
       </div>`
     );
     await soth.capture.init(orgId, villageId);

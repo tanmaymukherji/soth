@@ -40,16 +40,40 @@ soth.map = {
     if (soth.map._map) { soth.map._map.remove(); soth.map._map = null; }
     soth.map._markers.forEach(m => m?.remove?.()); soth.map._markers = [];
 
-    // Plain white background with attribution — no basemap tiles
     soth.map._map = L.map(containerId, {
       zoomControl: true,
       attributionControl: true,
     }).setView([center.lat, center.lng], zoom);
 
     L.control.attribution({ prefix: false }).addTo(soth.map._map);
-    soth.map._map.attributionControl.addAttribution('Data: <a href="https://bharatlas.com" target="_blank">BharatAtlas</a> (LGD)');
+    soth.map._map.attributionControl.addAttribution('Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> via <a href="https://bharatatlas.com" target="_blank">BharatAtlas</a>');
+
+    // Load India boundary + states from BharatAtlas GeoJSON (async, rendered on top of white bg)
+    soth.map._loadBharatAtlasBoundaries();
 
     return soth.map._map;
+  },
+
+  // Load BharatAtlas India boundary and state boundaries as GeoJSON layers
+  _loadBharatAtlasBoundaries: async function () {
+    if (!soth.map._map) return;
+    // Fetch both files in parallel
+    const [india, states] = await Promise.all([
+      fetch('data/india-boundary-bh.geojson').then(r => r.json()).catch(() => null),
+      fetch('data/states-bh.geojson').then(r => r.json()).catch(() => null),
+    ]);
+    // India outline
+    if (india) {
+      L.geoJSON(india, {
+        style: { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#1e293b', weight: 1.5, opacity: 0.8 },
+      }).addTo(soth.map._map);
+    }
+    // State boundaries
+    if (states) {
+      L.geoJSON(states, {
+        style: { fill: false, color: '#94a3b8', weight: 0.8, opacity: 0.5 },
+      }).addTo(soth.map._map);
+    }
   },
 
   addVillagePin: function (village, org, options) {
