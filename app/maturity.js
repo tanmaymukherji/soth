@@ -12,9 +12,9 @@ soth.maturity = {
       const totalVillages = villageIds.length;
       if (!themes.length || !totalVillages) return { themes: [], overall: 0 };
 
-      // Get all captures for this org
+      // Get all captures for this org (village filter is redundant - captures belong to org's villages)
       const { data: allCaps } = await sb.from('latest_captures').select('*')
-        .eq('org_id', orgId).in('village_id', villageIds);
+        .eq('org_id', orgId);
       const capMap = {};
       (allCaps || []).forEach(c => {
         if (!capMap[c.sub_parameter_id]) capMap[c.sub_parameter_id] = new Set();

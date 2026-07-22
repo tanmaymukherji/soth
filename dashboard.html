@@ -100,6 +100,47 @@ soth.openVillage = function (orgId, villageId, villageName) {
   soth.capture.init(orgId, villageId);
 };
 
+soth.showPartnerSpider = async function () {
+  const orgId = document.getElementById('partner-select')?.value;
+  const container = document.getElementById('partner-spider-container');
+  if (!orgId || !container) { container.style.display = 'none'; return; }
+  container.style.display = '';
+
+  const maturity = await soth.maturity.compute(orgId);
+  const orgs = await soth.data.organizations();
+  const org = orgs.find(o => o.id === orgId);
+  const themes = maturity.themes || [];
+
+  // Destroy existing chart if any
+  const oldCanvas = document.getElementById('partner-spider-canvas');
+  if (oldCanvas) oldCanvas.remove();
+
+  container.innerHTML = `<canvas id="partner-spider-canvas"></canvas>`;
+  if (themes.length) {
+    new Chart(document.getElementById('partner-spider-canvas'), {
+      type: 'radar',
+      data: {
+        labels: themes.map(t => t.name),
+        datasets: [{
+          label: org?.name || 'Partner',
+          data: themes.map(t => t.score),
+          backgroundColor: 'rgba(37,99,235,0.1)',
+          borderColor: '#2563eb',
+          pointBackgroundColor: themes.map(t => soth.map.maturityColor(t.score)),
+          pointRadius: 5,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+};
+
 soth.showAddVillage = async function () {
   const modal = document.getElementById('admin-modal');
   const { data: states } = await soth.sb().from('villages').select('distinct state');
@@ -194,6 +235,17 @@ soth.loadDashboard = async function () {
     document.getElementById('overall-maturity').textContent = `Average: ${Math.round(overall)}%`;
     document.getElementById('overall-maturity').style.color = soth.map.maturityColor(overall);
 
+    // Partner selector
+    let partnerHtml = '<div style="margin-bottom:16px;"><label>Select Partner:</label>';
+    partnerHtml += '<select id="partner-select" onchange="soth.showPartnerSpider()" style="max-width:300px;">';
+    partnerHtml += '<option value="">-- Select --</option>';
+    orgs.forEach((o, i) => {
+      const m = maturities[i];
+      if (m.themes?.length) partnerHtml += `<option value="${o.id}">${o.name} (${Math.round(m.overall)}%)</option>`;
+    });
+    partnerHtml += '</select></div>';
+    partnerHtml += '<div id="partner-spider-container" style="height:350px;display:none;"><canvas id="partner-spider-canvas"></canvas></div>';
+
     const ctx = document.getElementById('theme-maturity-chart');
     ctx.innerHTML = '<canvas id="maturity-canvas"></canvas>';
     const labels = orgs.filter((o, i) => maturities[i]?.themes?.length).map(o => o.name);
@@ -218,6 +270,9 @@ soth.loadDashboard = async function () {
         plugins: { legend: { display: false } },
       },
     });
+
+    // Insert partner selector below bar chart
+    ctx.insertAdjacentHTML('afterend', partnerHtml);
     return;
   }
 
