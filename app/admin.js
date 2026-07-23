@@ -538,6 +538,10 @@ soth.admin = {
     const { data: v } = await sb.from('villages').select('*').eq('id', villageId).single();
     if (!v) return;
 
+    // Determine current section so we stay on it after geocoding
+    const activeBtn = document.querySelector('.admin-nav-btn.active');
+    const currentSection = activeBtn ? activeBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages' : 'villages';
+
     // Show immediate feedback
     soth.ui.showToast('Searching LGD database for ' + v.name + '...', 'info');
     const btns = document.querySelectorAll(`[onclick*="geocodeSingle('${villageId}')"]`);
@@ -549,18 +553,17 @@ soth.admin = {
       await soth.map._applyGeocode(v, result);
       soth.ui.showToast('Geocoded via LGD!', 'success');
       await new Promise(r => setTimeout(r, 500));
-      soth.admin.showSection('villages');
+      soth.admin.showSection(currentSection);
       return;
     }
 
     // Step 2: Not found - search LGD for similar names to let user pick
-    // Re-enable buttons that were disabled
     btns.forEach(b => { b.textContent = 'Geocode'; b.disabled = false; });
-    soth.admin._showGeocodePicker(v, villageId);
+    soth.admin._showGeocodePicker(v, villageId, currentSection);
   },
 
   // Show a picker modal with LGD search results when exact match fails
-  _showGeocodePicker: async function (v, villageId) {
+  _showGeocodePicker: async function (v, villageId, returnSection) {
     const modal = document.getElementById('admin-modal');
     if (!modal) return;
 
@@ -628,7 +631,9 @@ soth.admin = {
     document.getElementById('admin-modal').classList.add('hidden');
     soth.ui.showToast('Geocoded!', 'success');
     await new Promise(r => setTimeout(r, 500));
-    soth.admin.showSection('villages');
+    const activeBtn = document.querySelector('.admin-nav-btn.active');
+    const section = activeBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages';
+    soth.admin.showSection(section);
   },
 
   // User chose district center as fallback
@@ -646,12 +651,16 @@ soth.admin = {
           document.getElementById('admin-modal').classList.add('hidden');
           soth.ui.showToast('Geocoded to district center!', 'success');
           await new Promise(r => setTimeout(r, 500));
-          soth.admin.showSection('villages');
+          const activeBtn = document.querySelector('.admin-nav-btn.active');
+          const section = activeBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages';
+          soth.admin.showSection(section);
           return;
         }
       }
     } catch (e) {}
     soth.ui.showToast('Could not geocode district', 'error');
+    const fbSection = document.querySelector('.admin-nav-btn.active')?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages';
+    soth.admin.showSection(fbSection);
   },
 
   renderCaptures: async function (container) {
