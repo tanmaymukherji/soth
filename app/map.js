@@ -237,24 +237,6 @@ soth.map = {
     } catch (e) { console.warn('applyGeocode error:', e); }
   },
 
-  // Clean village name and generate variations
-    const key = soth.config().MAPPLS_MAP_KEY;
-    if (!key) return null;
-    try {
-      const resp = await fetch(
-        `${soth.config().MAPPLS_GEOCODE_URL || 'https://atlas.mappls.com/api/places/search/json'}?query=${encodeURIComponent(village.name + ', ' + village.district + ', ' + village.state + ', India')}&region=IND`,
-        { headers: { Authorization: `Bearer ${key}` } }
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      if (data?.suggestedLocations?.length) {
-        const loc = data.suggestedLocations[0];
-        return { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude), label: loc.placeAddress || loc.placeName || '', placeId: loc.placeId || '', source: 'mappls' };
-      }
-      return null;
-    } catch (e) { console.warn('Geocode error:', e); return null; }
-  },
-
   maturityColor: function (pct) {
     if (pct >= 75) return '#16a34a';
     if (pct >= 50) return '#ca8a04';
