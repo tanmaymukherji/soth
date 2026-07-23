@@ -1,0 +1,20 @@
+-- SoTH Geocode Updates
+BEGIN;
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='5ef8afba-dc7e-4a12-9f89-5cae80e53360';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='964804a2-d912-4c6b-bb3e-5c13a87cf4a7';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='2f70d2c9-b08c-456c-b9ef-18110f405d60';
+UPDATE villages SET lat=13.352540999999999, lng=78.62137809999999, geocode_status='geocoded', geocode_source='bharatlas', geocode_label='BharatAtlas LGD centroid (lgd:596556)', geocoded_at=NOW() WHERE id='7e66cf51-567d-40f2-bb28-3159c1039467';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='05db54d7-9913-4162-b0dd-c43d4efc72ab';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='e76530ed-00fc-4d66-a119-f6578f8210c5';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='6227b159-bb4e-4bb1-b566-5eeab1d91e24';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='6f1c0950-5014-497d-89b6-58d4c3f371f6';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='cf5175fe-f8c3-417f-a49e-d29ae27aa6ac';
+UPDATE villages SET lat=15.1700827, lng=77.60620355, geocode_status='geocoded', geocode_source='bharatlas', geocode_label='BharatAtlas LGD centroid (lgd:594743)', geocoded_at=NOW() WHERE id='a23b8a7d-d7e4-496d-9cf3-0dc72c28a235';
+UPDATE villages SET lat=13.5071425, lng=78.10795445, geocode_status='geocoded', geocode_source='bharatlas', geocode_label='BharatAtlas LGD centroid (lgd:624427)', geocoded_at=NOW() WHERE id='2ce68923-9ad2-4347-b7c3-586b4d1c0988';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='8213c992-1bf1-4114-b243-4ccd0fad7cae';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='ff7f782c-118c-42ef-9aef-20afa33d5dd3';
+UPDATE villages SET lat=12.6504097, lng=78.1092165, geocode_status='geocoded', geocode_source='bharatlas', geocode_label='BharatAtlas LGD centroid (lgd:643806)', geocoded_at=NOW() WHERE id='576e3448-bdde-4e3d-93cf-a8c10bb16d58';
+UPDATE villages SET lat=18.408686799999998, lng=76.6826718, geocode_status='geocoded', geocode_source='bharatlas', geocode_label='BharatAtlas LGD centroid (lgd:560196)', geocoded_at=NOW() WHERE id='1fe855b3-5081-49dd-afd5-ad3260da3966';
+UPDATE villages SET lat=22.409177749999998, lng=86.0594877, geocode_status='geocoded', geocode_source='bharatlas', geocode_label='BharatAtlas LGD centroid (lgd:387485)', geocoded_at=NOW() WHERE id='b01d0860-83c1-454d-957c-79de587b80ca';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='3eb30c8e-2ce0-4747-869c-9a43fed299b9';
+UPDATE villages SET geocode_status='unmatched', geocode_source='bharatlas-notfound' WHERE id='465a249f-1387-42db-8fe3-abecfe660c0c';
