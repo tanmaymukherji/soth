@@ -138,13 +138,21 @@ soth.renderMaturityCharts = async function () {
     let totalScores = 0;
     let scored = 0;
     const cards = [];
+    // Pre-fetch village counts for all orgs in parallel
+    const orgVillageCounts = {};
+    await Promise.all(orgsToShow.map(async (org) => {
+      const villages = await soth.data.orgVillages(org.id);
+      orgVillageCounts[org.id] = villages.length;
+    }));
     for (const org of orgsToShow) {
       const m = await soth.maturity.compute(org.id);
       totalScores += m.overall || 0;
       if (m.overall) scored++;
       const color = soth.map.maturityColor(m.overall);
+      const vCount = orgVillageCounts[org.id] || 0;
       cards.push(`<div class="card" style="padding:16px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${soth.ui.escapeHtml(org.name)}</div>
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px;">${soth.ui.escapeHtml(org.name)}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px;">${vCount} village${vCount !== 1 ? 's' : ''}</div>
         <div style="font-size:28px;font-weight:700;color:${color};">${m.overall}%</div>
         <div class="maturity-bar"><div class="maturity-fill" style="width:${m.overall}%;background:${color};"></div></div>
         <div style="font-size:12px;color:var(--gray-500);margin-top:8px;">
