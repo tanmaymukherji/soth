@@ -65,6 +65,18 @@
 <script>
 (async function () {
   await soth.auth.init();
+
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').style.display = 'none';
+    document.getElementById('nav-logout').style.display = '';
+    document.getElementById('user-label').textContent = soth.currentUser.email;
+    document.getElementById('user-label').style.display = '';
+    if (soth.currentProfile?.role === 'soth_admin') {
+      document.getElementById('nav-admin').style.display = '';
+    }
+  }
+
   if (!soth.auth.requireAuth('login.html')) return;
 
   const params = new URLSearchParams(window.location.search);

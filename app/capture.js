@@ -76,37 +76,25 @@ soth.capture = {
     const val = existing || {};
     const valueText = val.value_text || '';
     const valueScale = val.value_scale;
-    const valueNumeric = val.value_numeric;
     const journeyStage = val.journey_stage || 'baseline';
 
-    let inputHtml = '';
-    if (param.data_type === 'qualitative') {
-      const opts = { 'yes': 'Yes', 'no': 'No', 'partially': 'Partially', 'na': 'N/A', 'not_tracking': 'Not Tracking' };
-      // Case-insensitive match for existing value
-      const matchedKey = Object.keys(opts).find(k => k.toLowerCase() === valueText.toLowerCase()) || '';
-      inputHtml = `<select class="capture-input" data-param-id="${param.id}" data-type="qualitative"
-        onchange="soth.capture.saveCapture('${param.id}','qualitative',this.value,null,null)">
-        <option value="">-- Select --</option>
-        ${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${matchedKey === k ? 'selected' : ''}>${v}</option>`).join('')}
-        ${valueText && !matchedKey ? `<option value="${soth.ui.escapeHtml(valueText)}" selected>${soth.ui.escapeHtml(valueText)} (custom)</option>` : ''}
-      </select>`;
-    } else if (param.data_type === 'quantitative_scale') {
-      const maxScale = param.scale?.max || 5;
-      inputHtml = '<div class="scale-group">';
-      for (let i = 0; i <= maxScale; i++) {
-        const sel = valueScale === i ? ' selected' : '';
-        inputHtml += `<button class="scale-btn${sel}" onclick="soth.capture.saveCapture('${param.id}','quantitative_scale',null,${i},null)">${i}</button>`;
-      }
-      inputHtml += '</div>';
-    } else if (param.data_type === 'quantitative_numeric') {
-      inputHtml = `<input type="number" class="capture-input" data-param-id="${param.id}"
-        value="${valueNumeric != null ? valueNumeric : ''}" placeholder="Enter value"
-        onchange="soth.capture.saveCapture('${param.id}','quantitative_numeric',null,null,this.value)">`;
-    } else {
-      inputHtml = `<textarea class="capture-input" data-param-id="${param.id}" rows="2"
-        placeholder="Enter notes / evidence"
-        onchange="soth.capture.saveCapture('${param.id}','text',this.value,null,null)">${soth.ui.escapeHtml(valueText)}</textarea>`;
+    const opts = { 'yes': 'Yes', 'no': 'No', 'partially': 'Partially', 'na': 'N/A', 'not_tracking': 'Not Tracking' };
+    const matchedKey = Object.keys(opts).find(k => k.toLowerCase() === valueText.toLowerCase()) || '';
+
+    const dropdownHtml = `<select class="capture-input" data-param-id="${param.id}" data-input-type="qualitative"
+      onchange="soth.capture.saveDualCapture('${param.id}')">
+      <option value="">-- Select --</option>
+      ${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${matchedKey === k ? 'selected' : ''}>${v}</option>`).join('')}
+      ${valueText && !matchedKey ? `<option value="${soth.ui.escapeHtml(valueText)}" selected>${soth.ui.escapeHtml(valueText)} (custom)</option>` : ''}
+    </select>`;
+
+    const maxScale = 10;
+    let scaleHtml = '<div class="scale-group" data-input-type="quantitative_scale">';
+    for (let i = 0; i <= maxScale; i++) {
+      const sel = valueScale === i ? ' selected' : '';
+      scaleHtml += `<button class="scale-btn${sel}" data-value="${i}" onclick="soth.capture.selectScale(this);soth.capture.saveDualCapture('${param.id}')">${i}</button>`;
     }
+    scaleHtml += '</div>';
 
     return `<div class="param-card" id="param-card-${param.id}">
       <div class="param-card-header">
@@ -114,7 +102,10 @@ soth.capture = {
         <div class="param-meta">${soth.ui.dataTypeLabel(param.data_type)}</div>
       </div>
       ${param.description ? `<div class="param-desc">${soth.ui.escapeHtml(param.description)}</div>` : ''}
-      <div class="param-input-area">${inputHtml}</div>
+      <div class="param-input-area">
+        <div class="capture-row"><label>Assessment:</label>${dropdownHtml}</div>
+        <div class="capture-row"><label>Score (0-${maxScale}):</label>${scaleHtml}</div>
+      </div>
       <div class="param-footer">
         <span class="journey-badge stage-${journeyStage}">${journeyStage}</span>
         ${existing?.captured_at ? `<span class="captured-at">Last: ${soth.ui.formatDate(existing.captured_at)}</span>` : ''}
@@ -123,32 +114,46 @@ soth.capture = {
     </div>`;
   },
 
-  saveCapture: async function (subParamId, dataType, textVal, scaleVal, numVal) {
+  selectScale: function (btn) {
+    const group = btn.closest('.scale-group');
+    if (group) group.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  },
+
+  saveDualCapture: async function (subParamId) {
+    const card = document.getElementById(`param-card-${subParamId}`);
+    if (!card) return;
+
+    const dropdown = card.querySelector('[data-input-type="qualitative"]');
+    const scaleGroup = card.querySelector('[data-input-type="quantitative_scale"]');
+    const selectedBtn = scaleGroup ? scaleGroup.querySelector('.scale-btn.selected') : null;
+
+    const textVal = dropdown ? dropdown.value : '';
+    const scaleVal = selectedBtn ? parseInt(selectedBtn.getAttribute('data-value')) : null;
+
+    if (!textVal && scaleVal == null) return;
+
     const payload = {
       org_id: this.currentOrgId,
       village_id: this.currentVillageId,
       sub_parameter_id: subParamId,
-      data_type: dataType,
+      data_type: scaleVal != null ? 'quantitative_scale' : 'qualitative',
       value_text: textVal || '',
-      value_scale: scaleVal != null ? parseInt(scaleVal) : null,
-      value_numeric: numVal != null ? parseFloat(numVal) : null,
+      value_scale: scaleVal,
+      value_numeric: null,
     };
     const { data, error } = await soth.data.saveCapture(payload);
     if (error) {
       soth.ui.showToast('Error saving: ' + error.message, 'error');
     } else {
       soth.ui.showToast('Saved!', 'success');
-      // Refresh the card
       const caps = await soth.data.latestCaptures(this.currentOrgId, this.currentVillageId);
       const capMap = {};
       caps.forEach(c => { capMap[c.sub_parameter_id] = c; });
       const allParams = await soth.data.allSubParams();
       const param = allParams.find(p => p.id === subParamId);
       if (param) {
-        const card = document.getElementById(`param-card-${subParamId}`);
-        if (card) {
-          card.outerHTML = this.renderParamCard(param, capMap[subParamId]);
-        }
+        card.outerHTML = this.renderParamCard(param, capMap[subParamId]);
       }
     }
   },
@@ -212,9 +217,11 @@ soth.capture = {
     } else {
       html += '<table class="param-table"><thead><tr><th>Date</th><th>Value</th><th>Journey</th><th>Captured By</th></tr></thead><tbody>';
       data.forEach(c => {
-        let val = c.value_text || '';
-        if (c.value_scale != null) val = `Scale: ${c.value_scale}`;
-        if (c.value_numeric != null) val = `Number: ${c.value_numeric}`;
+        let parts = [];
+        if (c.value_text) parts.push(c.value_text);
+        if (c.value_scale != null) parts.push('Score: ' + c.value_scale);
+        if (c.value_numeric != null) parts.push('Number: ' + c.value_numeric);
+        let val = parts.join(' | ') || '-';
         html += `<tr>
           <td>${soth.ui.formatDateTime(c.captured_at)}</td>
           <td>${soth.ui.escapeHtml(val)}</td>
