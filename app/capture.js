@@ -88,13 +88,10 @@ soth.capture = {
       ${valueText && !matchedKey ? `<option value="${soth.ui.escapeHtml(valueText)}" selected>${soth.ui.escapeHtml(valueText)} (custom)</option>` : ''}
     </select>`;
 
-    const maxScale = 10;
-    let scaleHtml = '<div class="scale-group" data-input-type="quantitative_scale">';
-    for (let i = 0; i <= maxScale; i++) {
-      const sel = valueScale === i ? ' selected' : '';
-      scaleHtml += `<button class="scale-btn${sel}" data-value="${i}" onclick="soth.capture.selectScale(this);soth.capture.saveDualCapture('${param.id}')">${i}</button>`;
-    }
-    scaleHtml += '</div>';
+    const pct = valueScale != null ? valueScale : '';
+    const pctHtml = `<input type="number" class="capture-input" data-input-type="quantitative_scale"
+      min="0" max="100" step="1" value="${pct}" placeholder="0-100"
+      onchange="soth.capture.saveDualCapture('${param.id}')">`;
 
     return `<div class="param-card" id="param-card-${param.id}">
       <div class="param-card-header">
@@ -104,7 +101,7 @@ soth.capture = {
       ${param.description ? `<div class="param-desc">${soth.ui.escapeHtml(param.description)}</div>` : ''}
       <div class="param-input-area">
         <div class="capture-row"><label>Assessment:</label>${dropdownHtml}</div>
-        <div class="capture-row"><label>Score (0-${maxScale}):</label>${scaleHtml}</div>
+        <div class="capture-row"><label>Score %:</label>${pctHtml}</div>
       </div>
       <div class="param-footer">
         <span class="journey-badge stage-${journeyStage}">${journeyStage}</span>
@@ -114,32 +111,26 @@ soth.capture = {
     </div>`;
   },
 
-  selectScale: function (btn) {
-    const group = btn.closest('.scale-group');
-    if (group) group.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-  },
-
   saveDualCapture: async function (subParamId) {
     const card = document.getElementById(`param-card-${subParamId}`);
     if (!card) return;
 
     const dropdown = card.querySelector('[data-input-type="qualitative"]');
-    const scaleGroup = card.querySelector('[data-input-type="quantitative_scale"]');
-    const selectedBtn = scaleGroup ? scaleGroup.querySelector('.scale-btn.selected') : null;
+    const pctInput = card.querySelector('[data-input-type="quantitative_scale"]');
 
     const textVal = dropdown ? dropdown.value : '';
-    const scaleVal = selectedBtn ? parseInt(selectedBtn.getAttribute('data-value')) : null;
+    const rawPct = pctInput ? pctInput.value.trim() : '';
+    const pctVal = rawPct !== '' ? parseInt(rawPct) : null;
 
-    if (!textVal && scaleVal == null) return;
+    if (!textVal && pctVal == null) return;
 
     const payload = {
       org_id: this.currentOrgId,
       village_id: this.currentVillageId,
       sub_parameter_id: subParamId,
-      data_type: scaleVal != null ? 'quantitative_scale' : 'qualitative',
+      data_type: pctVal != null ? 'quantitative_scale' : 'qualitative',
       value_text: textVal || '',
-      value_scale: scaleVal,
+      value_scale: pctVal,
       value_numeric: null,
     };
     const { data, error } = await soth.data.saveCapture(payload);
