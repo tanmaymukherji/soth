@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Partner - SoTH</title>
+<link rel="stylesheet" href="styles/app.css?v=20260727a">
+<script src="config.js?v=20260727a"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="data/lgd.js?v=20260727a"></script>
+<script src="app/core.js?v=20260727a"></script>
+<script src="app/map.js?v=20260727a"></script>
+<script src="app/maturity.js?v=20260727a"></script>
+<script src="app/capture.js?v=20260727a"></script>
+<style>
+.partner-hero { display:flex; align-items:center; justify-content:space-between; padding:20px 0; border-bottom:1px solid var(--gray-200); margin-bottom:20px; }
+.partner-hero h1 { margin:0; font-size:24px; }
+.partner-hero .back-link { font-size:13px; color:var(--gray-500); text-decoration:none; }
+.partner-hero .back-link:hover { color:var(--primary); }
+.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+.stats-row .stat-card { padding:16px; }
+.partner-body { display:grid; grid-template-columns:340px 1fr; gap:24px; align-items:start; }
+@media (max-width:900px) { .partner-body { grid-template-columns:1fr; } }
+.theme-table { width:100%; border-collapse:collapse; font-size:13px; }
+.theme-table th,.theme-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--gray-200); }
+.theme-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
+.theme-table tbody tr { cursor:pointer; transition:background 0.15s; }
+.theme-table tbody tr:hover { background:var(--gray-50); }
+.theme-table tbody tr.active-theme { background:var(--primary-light); }
+.subparam-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+.subparam-table th,.subparam-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--gray-200); }
+.subparam-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:11px; text-transform:uppercase; }
+.village-section { margin-top:24px; }
+.village-section h3 { margin:0 0 12px 0; }
+.filter-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.filter-row select,.filter-row input { flex:1; min-width:150px; }
+.village-table { width:100%; border-collapse:collapse; font-size:13px; }
+.village-table th,.village-table td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--gray-200); }
+.village-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:12px; text-transform:uppercase; }
+.village-table tbody tr:hover { background:var(--gray-50); }
+.expand-icon { font-size:12px; color:var(--gray-500); display:inline-block; transition:transform 0.2s; }
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<header class="app-header">
+  <div class="brand">Sense of <span>The House</span></div>
+  <nav>
+    <a href="index.html">Map</a>
+    <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+    <a href="superset.html">Superset</a>
+    <a href="compare.html">Compare</a>
+    <a href="admin.html" id="nav-admin" style="display:none">Admin</a>
+    <span id="user-label" style="display:none;font-size:12px;color:var(--gray-500);"></span>
+    <a href="login.html" id="nav-login">Login</a>
+    <button id="nav-logout" style="display:none" onclick="soth.auth.signOut(); window.location='index.html'">Logout</button>
+  </nav>
+</header>
+
+<main class="app-content">
+  <div id="partner-page">
+    <div class="loading-spinner">Loading partner data...</div>
+  </div>
+</main>
+
+<script>
+soth.renderPartnerPage = async function (orgId, orgName) {
+  const container = document.getElementById('partner-page');
+
+  // 1. Fetch all data in parallel
+  const [orgVillages, maturity, themes, allSubParams] = await Promise.all([
+    soth.data.orgVillages(orgId),
+    soth.maturity.compute(orgId),
+    soth.data.themes(),
+    soth.data.allSubParams(),
+  ]);
+
+  const allVillages = orgVillages.map(ov => ov.villages).filter(Boolean);
+  const statesSet = new Set(allVillages.map(v => v.state).filter(Boolean));
+  const uniqueStates = [...statesSet].sort();
+
+  // Captures per village
+  const capsRes = await soth.sb().from('latest_captures').select('*').eq('org_id', orgId);
+  const capByVillage = {};
+  (capsRes?.data || []).forEach(c => {
+    if (!capByVillage[c.village_id]) capByVillage[c.village_id] = {};
+    capByVillage[c.village_id][c.sub_parameter_id] = c;
+  });
+  const withData = Object.keys(capByVillage).length;
+  const withoutData = allVillages.length - withData;
+
+  // Params by theme
+  const paramsByTheme = {};
+  allSubParams.forEach(p => {
+    if (!paramsByTheme[p.theme_id]) paramsByTheme[p.theme_id] = [];
+    paramsByTheme[p.theme_id].push(p);
+  });
+
+  // Build page HTML
+  let html = '';
+
+  // Hero
+  html += `<div class="partner-hero">
+    <div>
+      <a href="index.html" class="back-link">&larr; Back to Map</a>
+      <h1>${soth.ui.escapeHtml(orgName)}</h1>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:36px;font-weight:700;color:${soth.map.maturityColor(maturity.overall)};">${maturity.overall}%</div>
+      <div style="font-size:12px;color:var(--gray-500);">Overall Maturity</div>
+    </div>
+  </div>`;
+
+  // Stats
+  html += `<div class="stats-row">
+    <div class="stat-card"><div class="stat-value">${allVillages.length}</div><div class="stat-label">Villages</div></div>
+    <div class="stat-card"><div class="stat-value">${uniqueStates.length}</div><div class="stat-label">States</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--success);">${withData}</div><div class="stat-label">With Data</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--danger);">${withoutData}</div><div class="stat-label">Without Data</div></div>
+  </div>`;
+
+  // Main body: radar + theme table
+  html += `<div class="partner-body">`;
+
+  // Left: radar chart
+  html += `<div><div style="font-weight:600;margin-bottom:8px;">Theme Scores</div>
+    <div style="height:320px;"><canvas id="partner-radar"></canvas></div></div>`;
+
+  // Right: theme table
+  html += `<div>
+    <div style="font-weight:600;margin-bottom:8px;">Parameters</div>
+    <table class="theme-table" id="theme-table"><thead><tr><th>Theme</th><th>Score</th><th>Captured</th><th></th></tr></thead><tbody>`;
+  themes.forEach(t => {
+    const ts = maturity.themes.find(mt => mt.id === t.id);
+    const score = ts?.score || 0;
+    const captured = ts?.capturedParams || 0;
+    const total = (paramsByTheme[t.id] || []).length;
+    const color = soth.map.maturityColor(score);
+    html += `<tr data-theme-id="${t.id}" onclick="soth.toggleTheme('${t.id}')">
+      <td><strong>${soth.ui.escapeHtml(t.name)}</strong></td>
+      <td><span style="background:${color};color:white;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;">${score}%</span></td>
+      <td>${captured}/${total}</td>
+      <td><span class="expand-icon">▸</span></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+
+  // Sub-param panels (hidden by default)
+  themes.forEach(t => {
+    const params = paramsByTheme[t.id] || [];
+    html += `<div class="subparam-panel hidden" id="subparam-${t.id}">
+      <table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Type</th><th>Qualitative</th><th>Score</th><th>Villages</th></tr></thead><tbody>`;
+    params.forEach(p => {
+      let capturedCount = 0, qualVal = '', quantVal = '';
+      for (const vid in capByVillage) {
+        if (capByVillage[vid][p.id]) {
+          capturedCount++;
+          if (!qualVal && capByVillage[vid][p.id].value_text) qualVal = capByVillage[vid][p.id].value_text;
+          if (quantVal == null && capByVillage[vid][p.id].value_scale != null) quantVal = capByVillage[vid][p.id].value_scale;
+        }
+      }
+      html += `<tr>
+        <td><strong>${soth.ui.escapeHtml(p.name)}</strong></td>
+        <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
+        <td>${qualVal || '—'}</td>
+        <td>${quantVal != null ? quantVal + '%' : '—'}</td>
+        <td>${capturedCount}/${allVillages.length}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  });
+  html += '</div></div>';
+
+  // Village list
+  html += `<div class="village-section">
+    <h3>Villages (${allVillages.length})</h3>
+    <div class="filter-row">
+      <select id="v-state-filter" onchange="soth.filterVillages()">
+        <option value="">All States</option>
+        ${uniqueStates.map(s => `<option value="${soth.ui.escapeHtml(s)}">${soth.ui.escapeHtml(s)}</option>`).join('')}
+      </select>
+      <input type="text" id="v-search" placeholder="Search villages..." oninput="soth.filterVillages()">
+    </div>
+    <div style="max-height:400px;overflow-y:auto;">
+      <table class="village-table" id="village-table"><thead><tr><th>Village</th><th>District</th><th>State</th><th>Data</th><th></th></tr></thead><tbody>`;
+  allVillages.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(v => {
+    const hasData = capByVillage[v.id];
+    html += `<tr class="vrow" data-state="${soth.ui.escapeHtml(v.state || '')}">
+      <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
+      <td>${soth.ui.escapeHtml(v.district || '')}</td>
+      <td>${soth.ui.escapeHtml(v.state || '')}</td>
+      <td>${hasData ? '<span style="color:var(--success);">✓</span>' : '<span style="color:var(--danger);">✗</span>'}</td>
+      <td><a href="village.html?org=${orgId}&village=${v.id}" class="btn btn-small btn-outline">Edit</a></td>
+    </tr>`;
+  });
+  html += '</tbody></table></div></div>';
+
+  container.innerHTML = html;
+
+  // Build radar chart
+  if (maturity.themes.length) {
+    new Chart(document.getElementById('partner-radar'), {
+      type: 'radar',
+      data: {
+        labels: maturity.themes.map(t => t.name),
+        datasets: [{
+          label: 'Theme Score',
+          data: maturity.themes.map(t => t.score),
+          backgroundColor: 'rgba(37,99,235,0.1)',
+          borderColor: '#2563eb',
+          pointBackgroundColor: maturity.themes.map(t => soth.map.maturityColor(t.score)),
+          pointRadius: 5,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+};
+
+soth.toggleTheme = function (themeId) {
+  const panel = document.getElementById('subparam-' + themeId);
+  const row = document.querySelector('#theme-table tr[data-theme-id="' + themeId + '"]');
+  const icon = row?.querySelector('.expand-icon');
+  if (!panel) return;
+  const isOpen = !panel.classList.contains('hidden');
+  if (isOpen) {
+    panel.classList.add('hidden');
+    if (icon) icon.textContent = '▸';
+  } else {
+    document.querySelectorAll('.subparam-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('#theme-table .expand-icon').forEach(i => i.textContent = '▸');
+    panel.classList.remove('hidden');
+    if (icon) icon.textContent = '▾';
+  }
+};
+
+soth.filterVillages = function () {
+  const state = document.getElementById('v-state-filter')?.value || '';
+  const search = (document.getElementById('v-search')?.value || '').toLowerCase().trim();
+  document.querySelectorAll('.vrow').forEach(row => {
+    const rowState = row.dataset.state || '';
+    const name = row.querySelector('td')?.textContent?.toLowerCase() || '';
+    const matchState = !state || rowState === state;
+    const matchSearch = !search || name.includes(search);
+    row.style.display = (matchState && matchSearch) ? '' : 'none';
+  });
+};
+
+(async function () {
+  await soth.auth.init();
+
+  if (soth.currentUser) {
+    document.getElementById('nav-dashboard').style.display = '';
+    document.getElementById('nav-login').style.display = 'none';
+    document.getElementById('nav-logout').style.display = '';
+    document.getElementById('user-label').textContent = soth.currentUser.email;
+    document.getElementById('user-label').style.display = '';
+    if (soth.currentProfile?.role === 'soth_admin') {
+      document.getElementById('nav-admin').style.display = '';
+    }
+  }
+
+  if (!soth.auth.requireAuth('login.html')) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const orgId = params.get('org');
+  if (!orgId) {
+    document.getElementById('partner-page').innerHTML = '<p class="empty-state">No partner specified. <a href="index.html">Go to Map</a></p>';
+    return;
+  }
+
+  try {
+    const sb = soth.sb();
+    const { data: org } = await sb.from('organizations').select('*').eq('id', orgId).single();
+    if (!org) {
+      document.getElementById('partner-page').innerHTML = '<p class="empty-state">Partner not found.</p>';
+      return;
+    }
+
+    if (soth.currentProfile.role !== 'soth_admin' && soth.currentProfile.org_id !== orgId) {
+      document.getElementById('partner-page').innerHTML = '<p class="empty-state">You do not have access to this partner.</p>';
+      return;
+    }
+
+    await soth.renderPartnerPage(orgId, org.name);
+  } catch (e) {
+    console.error('Partner page error:', e);
+    document.getElementById('partner-page').innerHTML = '<p class="empty-state">Failed to load partner data.</p>';
+  }
+})();
+</script>
+</body>
+</html>
