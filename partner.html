@@ -126,12 +126,16 @@ soth.renderPartnerPage = async function (orgId, orgName) {
   </div>`;
 
   // Filters (right below stats)
+  const allVillagesSorted = [...allVillages].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   html += `<div class="filter-row" style="margin-bottom:20px;">
-    <select id="v-state-filter" onchange="soth.filterVillages()">
+    <select id="v-state-filter" onchange="soth.onStateFilterChange()">
       <option value="">All States</option>
       ${uniqueStates.map(s => `<option value="${soth.ui.escapeHtml(s)}">${soth.ui.escapeHtml(s)}</option>`).join('')}
     </select>
-    <input type="text" id="v-search" placeholder="Search villages..." oninput="soth.filterVillages()">
+    <select id="v-village-filter" onchange="soth.onVillageFilterChange()">
+      <option value="">All Villages (${allVillagesSorted.length})</option>
+      ${allVillagesSorted.map(v => `<option value="${v.id}">${soth.ui.escapeHtml(v.name)} — ${soth.ui.escapeHtml(v.district || '')}</option>`).join('')}
+    </select>
   </div>`;
 
   // Spider chart on top (full width)
@@ -177,7 +181,7 @@ soth.renderPartnerPage = async function (orgId, orgName) {
       <table class="village-table" id="village-table"><thead><tr><th>Village</th><th>District</th><th>State</th><th>Data</th><th></th></tr></thead><tbody>`;
   allVillages.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(v => {
     const hasData = capByVillage[v.id];
-    html += `<tr class="vrow" data-state="${soth.ui.escapeHtml(v.state || '')}">
+    html += `<tr class="vrow" data-state="${soth.ui.escapeHtml(v.state || '')}" data-village-id="${v.id}">
       <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
       <td>${soth.ui.escapeHtml(v.district || '')}</td>
       <td>${soth.ui.escapeHtml(v.state || '')}</td>
@@ -193,6 +197,7 @@ soth.renderPartnerPage = async function (orgId, orgName) {
   soth._partnerParamsByTheme = paramsByTheme;
   soth._partnerCapByVillage = capByVillage;
   soth._partnerVillageCount = allVillages.length;
+  soth._partnerAllVillages = allVillages;
 
   // Build radar chart
   if (maturity.themes.length) {
@@ -273,14 +278,32 @@ soth.toggleTheme = function (themeId) {
 
 soth.filterVillages = function () {
   const state = document.getElementById('v-state-filter')?.value || '';
-  const search = (document.getElementById('v-search')?.value || '').toLowerCase().trim();
+  const villageId = document.getElementById('v-village-filter')?.value || '';
   document.querySelectorAll('.vrow').forEach(row => {
     const rowState = row.dataset.state || '';
-    const name = row.querySelector('td')?.textContent?.toLowerCase() || '';
+    const rowId = row.dataset.villageId || '';
     const matchState = !state || rowState === state;
-    const matchSearch = !search || name.includes(search);
-    row.style.display = (matchState && matchSearch) ? '' : 'none';
+    const matchVillage = !villageId || rowId === villageId;
+    row.style.display = (matchState && matchVillage) ? '' : 'none';
   });
+};
+
+soth.onStateFilterChange = function () {
+  const state = document.getElementById('v-state-filter')?.value || '';
+  const villageSelect = document.getElementById('v-village-filter');
+  if (!villageSelect || !soth._partnerAllVillages) return;
+  // Rebuild village dropdown filtered by state
+  const filtered = state
+    ? soth._partnerAllVillages.filter(v => v.state === state)
+    : soth._partnerAllVillages;
+  const sorted = [...filtered].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  villageSelect.innerHTML = `<option value="">All Villages (${sorted.length})</option>` +
+    sorted.map(v => `<option value="${v.id}">${soth.ui.escapeHtml(v.name)} — ${soth.ui.escapeHtml(v.district || '')}</option>`).join('');
+  soth.filterVillages();
+};
+
+soth.onVillageFilterChange = function () {
+  soth.filterVillages();
 };
 
 (async function () {
