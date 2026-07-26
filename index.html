@@ -4,16 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721p">
-<script src="config.js?v=20260721p"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260726a">
+<script src="config.js?v=20260726a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260721p"></script>
-<script src="app/core.js?v=20260721p"></script>
-<script src="app/map.js?v=20260721p"></script>
-<script src="app/maturity.js?v=20260721p"></script>
-<script src="app/superset.js?v=20260721p"></script>
+<script src="data/lgd.js?v=20260726a"></script>
+<script src="app/core.js?v=20260726a"></script>
+<script src="app/map.js?v=20260726a"></script>
+<script src="app/maturity.js?v=20260726a"></script>
+<script src="app/capture.js?v=20260726a"></script>
+<script src="app/superset.js?v=20260726a"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -62,6 +63,45 @@
   </div>
 </main>
 
+<!-- Village Detail Side Panel -->
+<aside id="village-detail-panel" class="village-detail-panel hidden" role="dialog" aria-modal="true" aria-label="Village details">
+  <div class="panel-header">
+    <h3 id="panel-village-name">Village</h3>
+    <button class="btn btn-outline btn-small" onclick="soth.closeVillagePanel()" aria-label="Close">✕</button>
+  </div>
+  <div id="panel-content" class="panel-content"></div>
+</aside>
+
+<!-- History Modal -->
+<div id="history-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div id="history-body"></div>
+    <div class="form-actions"><button class="btn btn-outline" onclick="document.getElementById('history-modal').classList.add('hidden')">Close</button></div>
+  </div>
+</div>
+
+<!-- Propose Modal -->
+<div id="propose-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3>Propose New Sub-Parameter for <span id="propose-theme-name"></span></h3>
+    <form id="propose-form">
+      <input type="hidden" id="propose-theme-id">
+      <label>Parameter Name *<input type="text" id="propose-name" required></label>
+      <label>Description<textarea id="propose-desc" rows="2"></textarea></label>
+      <label>Data Type<select id="propose-data-type">
+        <option value="qualitative">Qualitative (Yes/No/Partial)</option>
+        <option value="quantitative_scale">Quantitative (Scale)</option>
+        <option value="quantitative_numeric">Quantitative (Number)</option>
+        <option value="text">Text / Notes</option>
+      </select></label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Submit for Review</button>
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('propose-modal').classList.add('hidden')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 soth.renderMap = async function () {
   const themeFilter = document.getElementById('map-theme-filter')?.value || '';
@@ -97,7 +137,7 @@ soth.renderMap = async function () {
       soth.map.addVillagePin(v, org, {
         color,
         maturity: Math.round(orgMaturity),
-        detailUrl: `village.html?org=${org.id}&village=${v.id}`
+        onClick: () => soth.openVillageInPanel(org.id, v.id, v.name)
       });
     }
   }
@@ -166,6 +206,49 @@ soth.renderMaturityCharts = async function () {
     console.error('SoTH: renderMaturityCharts error:', e);
   }
 };
+
+// Village Detail Panel
+soth.openVillageInPanel = async function (orgId, villageId, villageName) {
+  const panel = document.getElementById('village-detail-panel');
+  const content = document.getElementById('panel-content');
+  const title = document.getElementById('panel-village-name');
+  if (!panel || !content || !title) return;
+
+  title.textContent = villageName;
+  content.innerHTML = '<div class="loading-spinner">Loading village data...</div>';
+  panel.classList.remove('hidden');
+
+  // Require login; RLS will protect unauthorized writes
+  if (!soth.currentUser || !soth.currentProfile) {
+    content.innerHTML = '<p class="empty-state">Please <a href="login.html">log in</a> to view and edit village details.</p>';
+    return;
+  }
+
+  try {
+    // Non-admins can only open their own org's villages
+    if (soth.currentProfile.role !== 'soth_admin' && soth.currentProfile.org_id !== orgId) {
+      content.innerHTML = '<p class="empty-state">You do not have access to this village.</p>';
+      return;
+    }
+    await soth.capture.renderTieredWorkspace('panel-content', { orgId, villageId });
+  } catch (e) {
+    console.error('openVillageInPanel error:', e);
+    content.innerHTML = '<p class="empty-state">Failed to load village data.</p>';
+  }
+};
+
+soth.closeVillagePanel = function () {
+  const panel = document.getElementById('village-detail-panel');
+  if (panel) panel.classList.add('hidden');
+};
+
+// Wire propose form
+document.addEventListener('DOMContentLoaded', function () {
+  document.getElementById('propose-form')?.addEventListener('submit', function (e) {
+    e.preventDefault();
+    soth.capture.submitProposal();
+  });
+});
 
 // Populate filters
 (async function initPage() {

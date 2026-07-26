@@ -112,5 +112,72 @@ soth.maturity = {
     if (!latest) return 'awareness';
     const idx = stages.indexOf(latest.journey_stage);
     return idx >= 0 ? latest.journey_stage : 'baseline';
+  },
+
+  // Compute per-theme village score = average of value_scale on latest captures.
+  // Text answers map to Yes=100, Partially=50, No=0; N/A and Not Tracking are
+  // excluded. Returns { themes:[{id,name,score,capturedParams,totalParams,captures}], overall }.
+  computeVillage: async function (orgId, villageId) {
+    try {
+      const sb = soth.sb();
+      if (!sb) return { themes: [], overall: 0 };
+      const themes = await soth.data.themes();
+      const allParams = await soth.data.allSubParams();
+      const caps = await soth.data.latestCaptures(orgId, villageId);
+      const capMap = {};
+      caps.forEach(c => { capMap[c.sub_parameter_id] = c; });
+
+      const textMap = { 'yes': 100, 'partially': 50, 'no': 0 };
+      const excluded = new Set(['na', 'n/a', 'not_tracking']);
+
+      const scoreFor = function (cap) {
+        if (!cap) return null;
+        if (cap.value_scale != null) return cap.value_scale;
+        const key = (cap.value_text || '').trim().toLowerCase();
+        if (excluded.has(key)) return null;
+        if (key in textMap) return textMap[key];
+        return null;
+      };
+
+      const paramsByTheme = {};
+      allParams.forEach(p => {
+        if (!paramsByTheme[p.theme_id]) paramsByTheme[p.theme_id] = [];
+        paramsByTheme[p.theme_id].push(p);
+      });
+
+      const themeScores = themes.map(theme => {
+        const params = paramsByTheme[theme.id] || [];
+        let sum = 0;
+        let counted = 0;
+        let capturedParams = 0;
+        const themeCaptures = [];
+        params.forEach(p => {
+          const cap = capMap[p.id];
+          if (!cap) return;
+          capturedParams++;
+          themeCaptures.push(cap);
+          const s = scoreFor(cap);
+          if (s != null) { sum += s; counted++; }
+        });
+        const score = counted ? Math.round(sum / counted) : 0;
+        return {
+          ...theme,
+          score,
+          capturedParams,
+          totalParams: params.length,
+          captures: themeCaptures
+        };
+      });
+
+      const scored = themeScores.filter(t => t.capturedParams > 0);
+      const overall = scored.length
+        ? Math.round(scored.reduce((s, t) => s + t.score, 0) / scored.length)
+        : 0;
+
+      return { themes: themeScores, overall };
+    } catch (e) {
+      console.warn('SoTH: maturity.computeVillage error:', e);
+      return { themes: [], overall: 0 };
+    }
   }
 };
