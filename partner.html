@@ -166,6 +166,15 @@ soth.renderPartnerPage = async function (orgId, orgName) {
     </div>
   </div>`;
 
+  // Village editor (shown when a village is selected)
+  html += `<div id="village-editor" class="hidden" style="margin-top:20px;border:1px solid var(--gray-200);border-radius:var(--radius);padding:16px;background:var(--gray-50);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="section-title" style="margin:0;" id="editor-title">Edit Village</div>
+      <a id="editor-village-link" href="#" class="btn btn-small btn-outline" target="_blank">Open Full Editor</a>
+    </div>
+    <div id="editor-content"></div>
+  </div>`;
+
   container.innerHTML = html;
 
   // Initial render
@@ -301,6 +310,49 @@ soth.updatePartnerView = function () {
   // Clear sub-param panel
   const subEl = document.getElementById('subparam-container');
   if (subEl) subEl.innerHTML = '<p class="empty-hint">Click a theme on the left to view its sub-parameters</p>';
+
+  // Show/hide village editor
+  const editorEl = document.getElementById('village-editor');
+  const editorTitle = document.getElementById('editor-title');
+  const editorLink = document.getElementById('editor-village-link');
+  const editorContent = document.getElementById('editor-content');
+  if (editorEl) {
+    if (villageId) {
+      const v = allVillages.find(x => x.id === villageId);
+      editorEl.classList.remove('hidden');
+      if (editorTitle) editorTitle.textContent = 'Edit: ' + (v?.name || 'Village');
+      if (editorLink) editorLink.href = 'village.html?org=' + orgId + '&village=' + villageId;
+      // Build editor rows for all sub-params
+      let ehtml = '<table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Qualitative</th><th>Quantitative (0-100)</th><th></th></tr></thead><tbody>';
+      themes.forEach(t => {
+        const params = paramsByTheme[t.id] || [];
+        params.forEach(p => {
+          const cap = capByVillage[villageId]?.[p.id];
+          const qualVal = cap?.value_text || '';
+          const quantVal = cap?.value_scale != null ? cap.value_scale : '';
+          const opts = { 'yes': 'Yes', 'no': 'No', 'partially': 'Partially', 'na': 'N/A', 'not_tracking': 'Not Tracking' };
+          const matchedKey = Object.keys(opts).find(k => k.toLowerCase() === qualVal.toLowerCase()) || '';
+          let dd = `<select id="eq-${p.id}" class="capture-input" style="width:100%;padding:4px 8px;font-size:12px;">
+            <option value="">--</option>`;
+          for (const [k, v] of Object.entries(opts)) {
+            dd += `<option value="${k}"${matchedKey === k ? ' selected' : ''}>${v}</option>`;
+          }
+          dd += '</select>';
+          const numInput = `<input type="number" id="en-${p.id}" min="0" max="100" step="1" value="${quantVal}" placeholder="0-100" class="capture-input" style="width:80px;padding:4px 8px;font-size:12px;">`;
+          ehtml += `<tr>
+            <td style="font-size:12px;"><strong>${soth.ui.escapeHtml(p.name)}</strong><br><span style="color:var(--gray-400);font-size:11px;">${soth.ui.escapeHtml(t.name)}</span></td>
+            <td>${dd}</td>
+            <td>${numInput}</td>
+            <td><button class="btn btn-small" onclick="soth.savePartnerCapture('${p.id}')">Save</button></td>
+          </tr>`;
+        });
+      });
+      ehtml += '</tbody></table>';
+      editorContent.innerHTML = ehtml;
+    } else {
+      editorEl.classList.add('hidden');
+    }
+  }
 };
 
 soth.computeScopeScore = function (scopeVillages, themes, paramsByTheme, capByVillage) {
@@ -381,14 +433,45 @@ soth.onFilterChange = function () {
   const state = document.getElementById('v-state-filter')?.value || '';
   const villageSelect = document.getElementById('v-village-filter');
   const allVillages = soth._pAllVillages || [];
+  const currentVillage = villageSelect?.value || '';
 
   // Rebuild village dropdown filtered by state
   const filtered = state ? allVillages.filter(v => v.state === state) : allVillages;
   const sorted = [...filtered].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   villageSelect.innerHTML = `<option value="">All Villages (${sorted.length})</option>` +
-    sorted.map(v => `<option value="${v.id}">${soth.ui.escapeHtml(v.name)} — ${soth.ui.escapeHtml(v.district || '')}</option>`).join('');
+    sorted.map(v => `<option value="${v.id}"${v.id === currentVillage ? ' selected' : ''}>${soth.ui.escapeHtml(v.name)} — ${soth.ui.escapeHtml(v.district || '')}</option>`).join('');
 
   // Re-render everything
+  soth.updatePartnerView();
+};
+
+soth.savePartnerCapture = async function (subParamId) {
+  const villageId = document.getElementById('v-village-filter')?.value;
+  if (!villageId) return;
+  const orgId = soth._pOrgId;
+  const dd = document.getElementById('eq-' + subParamId);
+  const num = document.getElementById('en-' + subParamId);
+  const textVal = dd ? dd.value : '';
+  const rawPct = num ? num.value.trim() : '';
+  const pctVal = rawPct !== '' ? parseInt(rawPct, 10) : null;
+  if (!textVal && pctVal == null) return;
+
+  const payload = {
+    org_id: orgId,
+    village_id: villageId,
+    sub_parameter_id: subParamId,
+    data_type: pctVal != null ? 'quantitative_scale' : 'qualitative',
+    value_text: textVal || '',
+    value_scale: pctVal,
+    value_numeric: null,
+  };
+  const { data, error } = await soth.data.saveCapture(payload);
+  if (error) { soth.ui.showToast('Error: ' + error.message, 'error'); return; }
+  // Update local cache
+  if (!soth._pCapByVillage[villageId]) soth._pCapByVillage[villageId] = {};
+  soth._pCapByVillage[villageId][subParamId] = data;
+  soth.ui.showToast('Saved!', 'success');
+  // Refresh the view to update scores
   soth.updatePartnerView();
 };
 
