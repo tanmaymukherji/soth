@@ -341,6 +341,14 @@ soth.ui = {
     return div.innerHTML;
   },
 
+  // JS/attribute-safe escape (handles single quotes for inline JS string literals)
+  escapeAttr: function (str) {
+    return String(str == null ? '' : str)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '"');
+  },
+
   formatDate: function (d) {
     if (!d) return '';
     return new Date(d).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });

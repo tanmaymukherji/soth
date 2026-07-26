@@ -408,7 +408,7 @@ soth.admin = {
 
     let html = '<div class="admin-section"><h2>Villages</h2>';
     html += `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-      <input type="text" id="village-search-input" placeholder="Search by name..." style="flex:1;min-width:200px;"
+      <input type="text" id="village-search-input" placeholder="Search by name, district, or state..." style="flex:1;min-width:200px;"
         oninput="soth.admin.filterVillages(this.value)">
       <button class="btn btn-primary" onclick="soth.admin.showVillageForm()">+ Add Village</button>
     </div>`;
@@ -426,7 +426,7 @@ soth.admin = {
         <td>
           <button class="btn btn-small" onclick="soth.admin.showVillageForm('${v.id}')">Edit</button>
           <button class="btn btn-small btn-outline" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
-          <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeHtml(v.name)}')">Delete</button>
+          <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeAttr(v.name)}')">Delete</button>
         </td>
       </tr>`;
     });
@@ -442,38 +442,53 @@ soth.admin = {
   },
 
   _allVillages: null,
+  _villageSearchTimer: null,
 
   filterVillages: async function (query) {
     const q = query.toLowerCase().trim();
     const container = document.getElementById('village-table-container');
     if (!container) return;
-    const sb = soth.sb();
-    if (!soth.admin._allVillages) {
-      const { data } = await sb.from('villages').select('*').order('name').limit(2000);
-      soth.admin._allVillages = data || [];
+    if (!q) {
+      // Reset to paginated view by re-rendering the section
+      const activeBtn = document.querySelector('.admin-nav-btn.active');
+      const section = activeBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages';
+      soth.admin.showSection(section);
+      return;
     }
-    const filtered = q ? soth.admin._allVillages.filter(v =>
-      v.name.toLowerCase().includes(q) || v.district.toLowerCase().includes(q) || v.state.toLowerCase().includes(q)
-    ) : soth.admin._allVillages;
-    let html = '<table class="param-table"><thead><tr><th>Name</th><th>Block/GP</th><th>District</th><th>State</th><th>Coordinates</th><th>Geocode</th><th>Actions</th></tr></thead><tbody>';
-    filtered.slice(0, 200).forEach(v => {
-      html += `<tr>
-        <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
-        <td>${soth.ui.escapeHtml(v.block || v.gram_panchayat || '')}</td>
-        <td>${soth.ui.escapeHtml(v.district)}</td>
-        <td>${soth.ui.escapeHtml(v.state)}</td>
-        <td>${v.lat ? `${v.lat}, ${v.lng}` : '-'}</td>
-        <td><span class="status-badge status-${v.geocode_status || 'pending'}">${v.geocode_status || 'pending'}</span></td>
-        <td>
-          <button class="btn btn-small" onclick="soth.admin.showVillageForm('${v.id}')">Edit</button>
-          <button class="btn btn-small btn-outline" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
-          <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeHtml(v.name)}')">Delete</button>
-        </td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-    if (filtered.length > 200) html += `<p style="font-size:12px;color:var(--gray-500);">Showing 200 of ${filtered.length} matches</p>`;
-    container.innerHTML = html;
+    // Debounce to avoid hammering Supabase on each keystroke
+    clearTimeout(soth.admin._villageSearchTimer);
+    soth.admin._villageSearchTimer = setTimeout(async () => {
+      const sb = soth.sb();
+      // Use PostgREST case-insensitive OR filter through ilike
+      const { data: matches } = await sb.from('villages')
+        .select('*')
+        .or(`name.ilike.%${encodeURIComponent(q)}%,district.ilike.%${encodeURIComponent(q)}%,state.ilike.%${encodeURIComponent(q)}%`)
+        .limit(200);
+      const filtered = matches || [];
+      let html = '<table class="param-table"><thead><tr><th>Name</th><th>Block/GP</th><th>District</th><th>State</th><th>Coordinates</th><th>Geocode</th><th>Actions</th></tr></thead><tbody>';
+      filtered.slice(0, 200).forEach(v => {
+        html += `<tr>
+          <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
+          <td>${soth.ui.escapeHtml(v.block || v.gram_panchayat || '')}</td>
+          <td>${soth.ui.escapeHtml(v.district)}</td>
+          <td>${soth.ui.escapeHtml(v.state)}</td>
+          <td>${v.lat ? `${v.lat}, ${v.lng}` : '-'}</td>
+          <td><span class="status-badge status-${v.geocode_status || 'pending'}">${v.geocode_status || 'pending'}</span></td>
+          <td>
+            <button class="btn btn-small" onclick="soth.admin.showVillageForm('${v.id}')">Edit</button>
+            <button class="btn btn-small btn-outline" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
+            <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeAttr(v.name)}')">Delete</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      if (!filtered.length) {
+        html = '<p class="empty-state">No villages found for "' + soth.ui.escapeHtml(query) + '".</p>';
+      } else if (filtered.length === 200) {
+        html += `<p style="font-size:12px;color:var(--gray-500);">Showing first 200 matches. Refine your search for more.</p>`;
+      }
+      container.innerHTML = html;
+    }, 250);
   },
 
   showVillageForm: async function (villageId) {
@@ -818,7 +833,7 @@ soth.admin = {
           <td><span class="status-badge status-${v.geocode_status}">${v.geocode_status}</span></td>
           <td>
             <button class="btn btn-small" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
-            <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeHtml(v.name)}')">Delete</button>
+            <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeAttr(v.name)}')">Delete</button>
           </td>
         </tr>`;
       });
@@ -884,9 +899,25 @@ soth.admin = {
 
   doDeleteVillage: async function (villageId) {
     const sb = soth.sb();
-    const { error } = await sb.from('villages').delete().eq('id', villageId);
+    const { data, error, count } = await sb.from('villages').delete({ count: 'exact' })
+      .eq('id', villageId);
     document.getElementById('admin-modal').classList.add('hidden');
-    if (error) { soth.ui.showToast('Error: ' + error.message, 'error'); return; }
+    console.log('SoTH delete village response:', { villageId, data, error, count });
+    if (error) {
+      // PostgREST error object carries message + details (hint usually about FK)
+      const msg = error.message || error.toString();
+      const hint = error.hint ? ('\nHint: ' + error.hint) : '';
+      const det = error.details ? ('\nDetails: ' + error.details) : '';
+      soth.ui.showToast('Delete failed: ' + msg + hint + det || 'Unknown error', 'error');
+      return;
+    }
+    if (!count) {
+      // RBAC silently blocked or row vanished
+      const profile = soth.currentProfile;
+      const roleMsg = profile ? 'role=' + (profile.role || '?') : 'no profile';
+      soth.ui.showToast('Delete blocked (row may be protected or org-linked). ' + roleMsg, 'error');
+      return;
+    }
     soth.ui.showToast('Village deleted', 'success');
     // Refresh current section
     const activeBtn = document.querySelector('.admin-nav-btn.active');
