@@ -1,10 +1,9 @@
-// SoTH Map - BharatAtlas-credited map with village pins (no basemap tiles)
+// SoTH Map - Village pins on map (no basemap tiles, no boundaries)
 
 soth.map = {
   _map: null,
   _markers: [],
   _loaded: false,
-  _boundariesPromise: null,
 
   _loadLeaflet: async function () {
     if (window.L) { soth.map._loaded = true; return true; }
@@ -46,108 +45,108 @@ soth.map = {
       attributionControl: true,
     }).setView([center.lat, center.lng], zoom);
 
-    L.control.attribution({ prefix: false }).addTo(soth.map._map);
-    soth.map._map.attributionControl.addAttribution('Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> via <a href="https://bharatatlas.com" target="_blank">BharatAtlas</a>');
-
-    // Load India boundary + states from BharatAtlas GeoJSON (async, rendered on top of white bg)
-    soth.map._boundariesPromise = soth.map._loadBharatAtlasBoundaries();
-
     return soth.map._map;
   },
 
-  // Load BharatAtlas India boundary and state boundaries as GeoJSON layers
-  _loadBharatAtlasBoundaries: async function () {
-    if (!soth.map._map) return;
-    // Fetch both files in parallel
-    const [india, states] = await Promise.all([
-      fetch('data/india-boundary-bh.geojson').then(r => r.json()).catch(() => null),
-      fetch('data/states-bh.geojson').then(r => r.json()).catch(() => null),
-    ]);
-    // India outline
-    if (india) {
-      L.geoJSON(india, {
-        style: { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#1e293b', weight: 1.5, opacity: 0.8 },
-      }).addTo(soth.map._map);
-    }
-    // State boundaries
-    if (states) {
-      L.geoJSON(states, {
-        style: { fill: false, color: '#94a3b8', weight: 0.8, opacity: 0.5 },
-      }).addTo(soth.map._map);
-    }
-  },
-
-  addVillagePin: function (village, org, options) {
+  // Add a pin for one or more villages at the same coordinate.
+  // options:
+  //   villages  — array of { id, name, district, state, block, gp }
+  //   org       — the org object (for single-org pins)
+  //   allOrgs   — array of { id, name, maturity, color } (for multi-org pins)
+  //   color     — pin colour
+  //   maturity  — maturity percentage (used for single-org display)
+  addVillagePin: function (options) {
     if (!soth.map._map) return null;
-    options = options || {};
-    const lat = parseFloat(village.lat);
-    const lng = parseFloat(village.lng);
+    const lat = parseFloat(options.lat);
+    const lng = parseFloat(options.lng);
     if (isNaN(lat) || isNaN(lng)) return null;
 
     const pinColor = options.color || '#2563eb';
+    const villages = options.villages || [];
+    const allOrgs = options.allOrgs || [];
+    const villageCount = villages.length;
 
-    // Register a click index for popup "View Details" buttons.
+    // Build popup content
+    const pinKey = `pin_${lat}_${lng}`;
     if (!soth.map._pinClickRegistry) soth.map._pinClickRegistry = {};
-    const pinKey = 'pin_' + village.id;
-    // Store the handler list; regenerate each render.
+
+    // Store all villages and orgs for this pin
     soth.map._pinClickRegistry[pinKey] = {
-      village: { id: village.id, name: village.name },
-      orgs: (options.allOrgs || []).map(o => ({ id: o.id, name: o.name })),
+      villages: villages.map(v => ({ id: v.id, name: v.name, district: v.district })),
+      orgs: allOrgs.map(o => ({ id: o.id, name: o.name })),
     };
 
-    // Build popup with village info + list of contributing orgs
-    let orgsHtml = '';
-    if (options.allOrgs && options.allOrgs.length) {
-      const orgLines = options.allOrgs.map((o, idx) => {
-        const onclickHandler = `soth.map.openPanelByIndex('${pinKey}', ${idx})`;
-        return `<div style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <span>
-            <span style="color:${o.color};font-weight:500;font-size:13px;">${soth.ui.escapeHtml(o.name)}</span>
-            <span style="font-size:11px;color:#666;"> — ${o.maturity}%</span>
-          </span>
-          <button onclick="${onclickHandler}" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 6px;text-decoration:underline;">View details</button>
+    let popupHtml = '';
+
+    if (villageCount === 1) {
+      // Single village at this coordinate
+      const v = villages[0];
+      popupHtml = `<div style="font-family:sans-serif;font-size:13px;line-height:1.4;min-width:180px;max-width:320px;">
+        <strong style="font-size:14px;">${soth.ui.escapeHtml(v.name)}</strong><br>
+        <span style="color:#666;font-size:12px;">${soth.ui.escapeHtml(v.district || '')}, ${soth.ui.escapeHtml(v.state || '')}</span>`;
+      if (allOrgs.length === 1) {
+        popupHtml += `<div style="margin-top:4px;">
+          <span style="color:#2563eb;font-weight:500;font-size:13px;">${soth.ui.escapeHtml(allOrgs[0].name)}</span>
+          <span style="font-size:11px;color:#666;"> — ${allOrgs[0].maturity}%</span>
         </div>`;
-      }).join('');
-      orgsHtml = `<div style="margin-top:6px;max-height:240px;overflow-y:auto;">${orgLines}</div>`;
-    } else if (org) {
-      const onclickHandler = `soth.map.openPanelByIndex('${pinKey}', 0)`;
-      orgsHtml = `<div style="margin-top:4px;">
-        <span style="color:#2563eb;font-weight:500;font-size:13px;">${soth.ui.escapeHtml(org.name)}</span>
-        ${options.maturity != null ? `<span style="font-size:11px;color:#666;"> — ${options.maturity}%</span>` : ''}
-      </div>`;
-      // Fallback: if no allOrgs, store single-org in registry
-      soth.map._pinClickRegistry[pinKey].orgs = [{ id: org.id, name: org.name }];
-      orgsHtml += `<div style="margin-top:4px;"><button onclick="${onclickHandler}" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 0;text-decoration:underline;">View details</button></div>`;
+        popupHtml += `<div style="margin-top:4px;"><button onclick="soth.map.openVillageFromPin('${pinKey}',0,0)" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 0;text-decoration:underline;">View details</button></div>`;
+      } else if (allOrgs.length > 1) {
+        popupHtml += `<div style="margin-top:6px;">`;
+        allOrgs.forEach((o, idx) => {
+          popupHtml += `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:3px;">
+            <span><span style="color:${o.color};font-weight:500;font-size:12px;">${soth.ui.escapeHtml(o.name)}</span> <span style="font-size:11px;color:#666;">${o.maturity}%</span></span>
+            <button onclick="soth.map.openVillageFromPin('${pinKey}',0,${idx})" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 4px;text-decoration:underline;">View details</button>
+          </div>`;
+        });
+        popupHtml += `</div>`;
+      } else {
+        popupHtml += `<div style="margin-top:4px;"><button onclick="soth.map.openVillageFromPin('${pinKey}',0,0)" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 0;text-decoration:underline;">View details</button></div>`;
+      }
+      popupHtml += `</div>`;
+
+    } else {
+      // Multiple villages at same coordinate
+      popupHtml = `<div style="font-family:sans-serif;font-size:13px;line-height:1.4;min-width:220px;max-width:360px;">
+        <strong style="font-size:14px;">${villageCount} villages</strong><br>
+        <span style="color:#666;font-size:12px;">Same coordinates</span>
+        <div style="margin-top:8px;max-height:250px;overflow-y:auto;">`;
+      villages.forEach((v, vIdx) => {
+        popupHtml += `<div style="padding:6px 0;border-bottom:1px solid #e5e7eb;">
+          <strong style="font-size:13px;">${soth.ui.escapeHtml(v.name)}</strong>
+          <span style="color:#888;font-size:11px;"> — ${soth.ui.escapeHtml(v.district || '')}</span>`;
+        if (allOrgs.length) {
+          allOrgs.forEach((o, oIdx) => {
+            popupHtml += `<div style="margin-top:2px;"><button onclick="soth.map.openVillageFromPin('${pinKey}',${vIdx},${oIdx})" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">View details — ${soth.ui.escapeHtml(o.name)}</button></div>`;
+          });
+        } else {
+          popupHtml += `<div style="margin-top:2px;"><button onclick="soth.map.openVillageFromPin('${pinKey}',${vIdx},0)" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">View details</button></div>`;
+        }
+        popupHtml += `</div>`;
+      });
+      popupHtml += `</div></div>`;
     }
 
-    const popupHtml = `
-      <div style="font-family:sans-serif;font-size:13px;line-height:1.4;min-width:200px;max-width:320px;">
-        <strong style="font-size:14px;">${soth.ui.escapeHtml(village.name)}</strong><br>
-        <span style="color:#666;font-size:12px;">${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span>
-        ${orgsHtml}
-      </div>`;
+    // Radius: slightly bigger for multi-village pins
+    const radius = villageCount > 1 ? 7 + Math.min(villageCount, 20) * 0.5 : 7;
 
     const marker = L.circleMarker([lat, lng], {
-      radius: 7, fillColor: pinColor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
+      radius, fillColor: pinColor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
     }).addTo(soth.map._map);
-    marker.bindPopup(popupHtml, { maxHeight: 300 });
-    if (options.onClick) marker.on('click', options.onClick);
+    marker.bindPopup(popupHtml, { maxHeight: 350 });
     soth.map._markers.push(marker);
     return marker;
   },
 
-  // Called from popup buttons to open the village side panel for a specific org
-  openPanelByIndex: function (pinKey, orgIndex) {
+  // Open the side panel from a pin click — looks up village + org from the registry
+  openVillageFromPin: function (pinKey, villageIdx, orgIdx) {
     const entry = soth.map._pinClickRegistry?.[pinKey];
-    if (!entry || !entry.orgs[orgIndex]) return;
-    const org = entry.orgs[orgIndex];
-    const villageName = entry.orgs.length > 1
-      ? `${entry.village.name} (${org.name})`
-      : entry.village.name;
-    // Close the popup so the side panel is visible
+    if (!entry) return;
+    const village = entry.villages[villageIdx];
+    const org = entry.orgs[orgIdx];
+    if (!village) return;
     if (soth.map._map) soth.map._map.closePopup();
     if (typeof soth.openVillageInPanel === 'function') {
-      soth.openVillageInPanel(org.id, entry.village.id, entry.village.name);
+      soth.openVillageInPanel(org?.id, village.id, village.name);
     }
   },
 
@@ -179,21 +178,17 @@ soth.map = {
   _nameVariations: function (name) {
     const n = name.trim();
     const vars = [n];
-    // Remove trailing 'i' → try 'e' (Indian village name pattern)
     if (n.endsWith('i')) vars.push(n.slice(0, -1) + 'e');
     if (n.endsWith('y')) vars.push(n.slice(0, -1) + 'i');
     if (n.endsWith('u')) vars.push(n.slice(0, -1) + 'a');
-    // Remove trailing 'a'
     if (n.endsWith('a')) vars.push(n.slice(0, -1));
     if (n.endsWith('e')) vars.push(n.slice(0, -1));
-    // Double to single letters
     for (const pair of [['ll', 'l'], ['tt', 't'], ['pp', 'p'], ['nn', 'n'], ['mm', 'm'], ['rr', 'r']]) {
       if (n.includes(pair[0])) vars.push(n.replace(pair[0], pair[1]));
     }
     return [...new Set(vars)];
   },
 
-  // Geocode via BharatAtlas LGD (uses government LGD polygon data)
   geocodeViaBharatAtlas: async function (village) {
     const baseName = soth.map._cleanVillageName(village.name);
     const nameForms = soth.map._nameVariations(baseName);
@@ -225,7 +220,6 @@ soth.map = {
         return { lat, lng, label: `${village.name}, ${village.district}, ${village.state} (LGD via BharatAtlas)`, source: 'bharatlas' };
       } catch (e) { /* try next variation */ }
     }
-    // Fallback: try district-level geocode via Nominatim
     if (village.district) {
       try {
         const q = encodeURIComponent(`${village.district}, ${village.state}, India`);
@@ -244,8 +238,6 @@ soth.map = {
     return null;
   },
 
-  // Geocode via GramEEE LGD API (self-hosted government LGD data)
-  // Configure GRAMEEE_LGD_URL in config.js if available
   geocodeViaGramEEE: async function (village) {
     const baseUrl = soth.config().GRAMEEE_LGD_URL || '';
     if (!baseUrl) return null;
@@ -256,7 +248,6 @@ soth.map = {
       if (!resp.ok) return null;
       const data = await resp.json();
       if (!data?.villages?.length) return null;
-      // Find best match by district+state
       const match = data.villages.find(v =>
         v.district_name?.toLowerCase() === village.district?.toLowerCase() &&
         v.state_name?.toLowerCase() === village.state?.toLowerCase()
@@ -271,7 +262,6 @@ soth.map = {
     } catch (e) { return null; }
   },
 
-  // Apply geocoding result to a village in Supabase
   _applyGeocode: async function (village, result) {
     if (!village?.id || !result?.lat) return;
     try {

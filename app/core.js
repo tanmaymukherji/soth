@@ -229,7 +229,7 @@ soth.data = {
       const sb = soth.data._sbOrNull();
       if (!sb) return [];
       const { data } = await sb.from('org_villages').select('*, villages(*)')
-        .eq('org_id', orgId).eq('status', 'active');
+        .eq('org_id', orgId).eq('status', 'active').limit(2000);
       return data || [];
     } catch (e) { console.warn('SoTH: orgVillages error:', e); return []; }
   },
