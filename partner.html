@@ -68,6 +68,17 @@
 <script>
 soth._partnerChart = null;
 
+// Map a capture to a numeric score (handles both quantitative and qualitative)
+soth._capScore = function (cap) {
+  if (!cap) return null;
+  if (cap.value_scale != null) return cap.value_scale;
+  const t = (cap.value_text || '').trim().toLowerCase();
+  if (t === 'yes') return 100;
+  if (t === 'partially') return 50;
+  if (t === 'no') return 0;
+  return null;
+};
+
 soth.renderPartnerPage = async function (orgId, orgName) {
   const container = document.getElementById('partner-page');
 
@@ -232,7 +243,7 @@ soth.updatePartnerView = function () {
         if (cap) {
           villageHasCaptured = true;
           capturedParams++;
-          const s = cap.value_scale != null ? cap.value_scale : null;
+          const s = soth._capScore(cap);
           if (s != null) { sum += s; counted++; }
           break;
         }
@@ -301,7 +312,8 @@ soth.computeScopeScore = function (scopeVillages, themes, paramsByTheme, capByVi
     params.forEach(p => {
       for (const vid of scopeIds) {
         const cap = capByVillage[vid]?.[p.id];
-        if (cap && cap.value_scale != null) { sum += cap.value_scale; counted++; break; }
+        const s = soth._capScore(cap);
+        if (s != null) { sum += s; counted++; break; }
       }
     });
     if (counted) { totalScore += Math.round(sum / counted); scoredThemes++; }
@@ -342,20 +354,21 @@ soth.toggleTheme = function (themeId) {
   const params = paramsByTheme[themeId] || [];
   let html = '<table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Type</th><th>Qualitative</th><th>Score</th><th>Coverage</th></tr></thead><tbody>';
   params.forEach(p => {
-    let capturedCount = 0, qualVal = '', quantVal = '';
+    let capturedCount = 0, qualVal = '', scoreVal = null;
     for (const vid of scopeIds) {
       const cap = capByVillage[vid]?.[p.id];
       if (cap) {
         capturedCount++;
         if (!qualVal && cap.value_text) qualVal = cap.value_text;
-        if (quantVal == null && cap.value_scale != null) quantVal = cap.value_scale;
+        const s = soth._capScore(cap);
+        if (scoreVal == null && s != null) scoreVal = s;
       }
     }
     html += `<tr>
       <td><strong>${soth.ui.escapeHtml(p.name)}</strong></td>
       <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
       <td>${qualVal || '—'}</td>
-      <td>${quantVal != null ? quantVal + '%' : '—'}</td>
+      <td>${scoreVal != null ? scoreVal + '%' : '—'}</td>
       <td>${capturedCount}/${scopeVillages.length}</td>
     </tr>`;
   });
