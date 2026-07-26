@@ -4,6 +4,7 @@ soth.map = {
   _map: null,
   _markers: [],
   _loaded: false,
+  _boundariesPromise: null,
 
   _loadLeaflet: async function () {
     if (window.L) { soth.map._loaded = true; return true; }
@@ -45,7 +46,33 @@ soth.map = {
       attributionControl: true,
     }).setView([center.lat, center.lng], zoom);
 
+    L.control.attribution({ prefix: false }).addTo(soth.map._map);
+    soth.map._map.attributionControl.addAttribution('Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> via <a href="https://bharatatlas.com" target="_blank">BharatAtlas</a>');
+
+    // Load boundaries async; caller should await _boundariesPromise before adding markers
+    soth.map._boundariesPromise = soth.map._loadBoundaries();
+
     return soth.map._map;
+  },
+
+  _loadBoundaries: async function () {
+    if (!soth.map._map) return;
+    try {
+      const [india, states] = await Promise.all([
+        fetch('data/india-boundary-bh.geojson').then(r => r.json()).catch(() => null),
+        fetch('data/states-bh.geojson').then(r => r.json()).catch(() => null),
+      ]);
+      if (india) {
+        L.geoJSON(india, {
+          style: { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#1e293b', weight: 1.5, opacity: 0.8 },
+        }).addTo(soth.map._map);
+      }
+      if (states) {
+        L.geoJSON(states, {
+          style: { fill: false, color: '#94a3b8', weight: 0.8, opacity: 0.5 },
+        }).addTo(soth.map._map);
+      }
+    } catch (e) { console.warn('SoTH: boundary load error:', e); }
   },
 
   // Add a pin for one or more villages at the same coordinate.

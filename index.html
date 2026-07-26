@@ -113,6 +113,9 @@ soth.renderMap = async function () {
 
   soth.map.clearMarkers();
 
+  // Wait for boundary polygons to load BEFORE adding markers (pins render on top)
+  if (soth.map._boundariesPromise) await soth.map._boundariesPromise;
+
   // Load all orgs + pre-compute their maturities in parallel
   const orgs = await soth.data.organizations();
   const filteredOrgs = orgFilter ? orgs.filter(o => o.id === orgFilter) : orgs;
