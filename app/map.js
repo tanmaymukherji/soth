@@ -154,7 +154,12 @@ soth.map = {
     if (!soth.map._map || !villages || !villages.length) return;
     const bounds = [];
     villages.forEach(v => {
-      const pin = soth.map.addVillagePin(v, org);
+      const pin = soth.map.addVillagePin({
+        lat: v.lat, lng: v.lng,
+        villages: [{ id: v.id, name: v.name, district: v.district, state: v.state }],
+        allOrgs: org ? [{ id: org.id, name: org.name, maturity: 0, color: '#2563eb' }] : [],
+        color: '#2563eb',
+      });
       if (pin && parseFloat(v.lat) && parseFloat(v.lng)) bounds.push([parseFloat(v.lat), parseFloat(v.lng)]);
     });
     if (bounds.length > 1 && soth.map._map?.fitBounds)
