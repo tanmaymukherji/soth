@@ -21,15 +21,18 @@
 .partner-hero .back-link:hover { color:var(--primary); }
 .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
 .stats-row .stat-card { padding:16px; }
-.partner-body { display:grid; grid-template-columns:340px 1fr; gap:24px; align-items:start; }
-@media (max-width:900px) { .partner-body { grid-template-columns:1fr; } }
+.radar-section { margin-bottom:24px; }
+.params-body { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; margin-bottom:24px; }
+@media (max-width:900px) { .params-body { grid-template-columns:1fr; } }
+.params-body .section-title { font-weight:600; margin-bottom:8px; font-size:14px; }
+.params-body .empty-hint { color:var(--gray-400); font-size:13px; font-style:italic; padding:20px 0; text-align:center; }
 .theme-table { width:100%; border-collapse:collapse; font-size:13px; }
 .theme-table th,.theme-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--gray-200); }
 .theme-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
 .theme-table tbody tr { cursor:pointer; transition:background 0.15s; }
 .theme-table tbody tr:hover { background:var(--gray-50); }
 .theme-table tbody tr.active-theme { background:var(--primary-light); }
-.subparam-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+.subparam-table { width:100%; border-collapse:collapse; font-size:13px; }
 .subparam-table th,.subparam-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--gray-200); }
 .subparam-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:11px; text-transform:uppercase; }
 .village-section { margin-top:24px; }
@@ -122,16 +125,18 @@ soth.renderPartnerPage = async function (orgId, orgName) {
     <div class="stat-card"><div class="stat-value" style="color:var(--danger);">${withoutData}</div><div class="stat-label">Without Data</div></div>
   </div>`;
 
-  // Main body: radar + theme table
-  html += `<div class="partner-body">`;
+  // Spider chart on top (full width)
+  html += `<div class="radar-section">
+    <div style="font-weight:600;margin-bottom:8px;">Theme Scores</div>
+    <div style="height:300px;max-width:500px;margin:0 auto;"><canvas id="partner-radar"></canvas></div>
+  </div>`;
 
-  // Left: radar chart
-  html += `<div><div style="font-weight:600;margin-bottom:8px;">Theme Scores</div>
-    <div style="height:320px;"><canvas id="partner-radar"></canvas></div></div>`;
+  // Parameters (left) + Sub-Parameters (right) side by side
+  html += `<div class="params-body">`;
 
-  // Right: theme table
+  // Left: theme table
   html += `<div>
-    <div style="font-weight:600;margin-bottom:8px;">Parameters</div>
+    <div class="section-title">Parameters</div>
     <table class="theme-table" id="theme-table"><thead><tr><th>Theme</th><th>Score</th><th>Captured</th><th></th></tr></thead><tbody>`;
   themes.forEach(t => {
     const ts = maturity.themes.find(mt => mt.id === t.id);
@@ -146,33 +151,15 @@ soth.renderPartnerPage = async function (orgId, orgName) {
       <td><span class="expand-icon">▸</span></td>
     </tr>`;
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
 
-  // Sub-param panels (hidden by default)
-  themes.forEach(t => {
-    const params = paramsByTheme[t.id] || [];
-    html += `<div class="subparam-panel hidden" id="subparam-${t.id}">
-      <table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Type</th><th>Qualitative</th><th>Score</th><th>Villages</th></tr></thead><tbody>`;
-    params.forEach(p => {
-      let capturedCount = 0, qualVal = '', quantVal = '';
-      for (const vid in capByVillage) {
-        if (capByVillage[vid][p.id]) {
-          capturedCount++;
-          if (!qualVal && capByVillage[vid][p.id].value_text) qualVal = capByVillage[vid][p.id].value_text;
-          if (quantVal == null && capByVillage[vid][p.id].value_scale != null) quantVal = capByVillage[vid][p.id].value_scale;
-        }
-      }
-      html += `<tr>
-        <td><strong>${soth.ui.escapeHtml(p.name)}</strong></td>
-        <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
-        <td>${qualVal || '—'}</td>
-        <td>${quantVal != null ? quantVal + '%' : '—'}</td>
-        <td>${capturedCount}/${allVillages.length}</td>
-      </tr>`;
-    });
-    html += '</tbody></table></div>';
-  });
-  html += '</div></div>';
+  // Right: sub-parameter table (updates when a theme is clicked)
+  html += `<div>
+    <div class="section-title">Sub-Parameters</div>
+    <div id="subparam-container"><p class="empty-hint">Click a theme on the left to view its sub-parameters</p></div>
+  </div>`;
+
+  html += '</div>';
 
   // Village list
   html += `<div class="village-section">
@@ -199,6 +186,11 @@ soth.renderPartnerPage = async function (orgId, orgName) {
   html += '</tbody></table></div></div>';
 
   container.innerHTML = html;
+
+  // Store data for toggleTheme to access
+  soth._partnerParamsByTheme = paramsByTheme;
+  soth._partnerCapByVillage = capByVillage;
+  soth._partnerVillageCount = allVillages.length;
 
   // Build radar chart
   if (maturity.themes.length) {
@@ -227,20 +219,54 @@ soth.renderPartnerPage = async function (orgId, orgName) {
 };
 
 soth.toggleTheme = function (themeId) {
-  const panel = document.getElementById('subparam-' + themeId);
   const row = document.querySelector('#theme-table tr[data-theme-id="' + themeId + '"]');
   const icon = row?.querySelector('.expand-icon');
-  if (!panel) return;
-  const isOpen = !panel.classList.contains('hidden');
-  if (isOpen) {
-    panel.classList.add('hidden');
-    if (icon) icon.textContent = '▸';
-  } else {
-    document.querySelectorAll('.subparam-panel').forEach(p => p.classList.add('hidden'));
-    document.querySelectorAll('#theme-table .expand-icon').forEach(i => i.textContent = '▸');
-    panel.classList.remove('hidden');
-    if (icon) icon.textContent = '▾';
+  const container = document.getElementById('subparam-container');
+  if (!container) return;
+
+  // If already active, deselect
+  const wasActive = row?.classList.contains('active-theme');
+  document.querySelectorAll('#theme-table tbody tr').forEach(r => r.classList.remove('active-theme'));
+  document.querySelectorAll('#theme-table .expand-icon').forEach(i => i.textContent = '▸');
+
+  if (wasActive) {
+    container.innerHTML = '<p class="empty-hint">Click a theme on the left to view its sub-parameters</p>';
+    return;
   }
+
+  row?.classList.add('active-theme');
+  if (icon) icon.textContent = '▾';
+
+  // Find theme data from the page's stored data
+  const themeName = row?.querySelector('td')?.textContent?.trim() || '';
+  const themeIdAttr = themeId;
+
+  // Build sub-parameter table from stored data
+  const params = soth._partnerParamsByTheme?.[themeIdAttr] || [];
+  const capByVillage = soth._partnerCapByVillage || {};
+  const allVillageCount = soth._partnerVillageCount || 0;
+
+  let html = `<table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Type</th><th>Qualitative</th><th>Score</th><th>Villages</th></tr></thead><tbody>`;
+  params.forEach(p => {
+    let capturedCount = 0, qualVal = '', quantVal = '';
+    for (const vid in capByVillage) {
+      if (capByVillage[vid][p.id]) {
+        capturedCount++;
+        if (!qualVal && capByVillage[vid][p.id].value_text) qualVal = capByVillage[vid][p.id].value_text;
+        if (quantVal == null && capByVillage[vid][p.id].value_scale != null) quantVal = capByVillage[vid][p.id].value_scale;
+      }
+    }
+    html += `<tr>
+      <td><strong>${soth.ui.escapeHtml(p.name)}</strong></td>
+      <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
+      <td>${qualVal || '—'}</td>
+      <td>${quantVal != null ? quantVal + '%' : '—'}</td>
+      <td>${capturedCount}/${allVillageCount}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  if (!params.length) html = '<p class="empty-hint">No sub-parameters defined for this theme</p>';
+  container.innerHTML = html;
 };
 
 soth.filterVillages = function () {
