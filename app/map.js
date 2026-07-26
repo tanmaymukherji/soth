@@ -4,6 +4,7 @@ soth.map = {
   _map: null,
   _markers: [],
   _loaded: false,
+  _boundariesPromise: null,
 
   _loadLeaflet: async function () {
     if (window.L) { soth.map._loaded = true; return true; }
@@ -49,7 +50,7 @@ soth.map = {
     soth.map._map.attributionControl.addAttribution('Boundaries: <a href="https://lgdirectory.gov.in" target="_blank">LGD</a> via <a href="https://bharatatlas.com" target="_blank">BharatAtlas</a>');
 
     // Load India boundary + states from BharatAtlas GeoJSON (async, rendered on top of white bg)
-    soth.map._loadBharatAtlasBoundaries();
+    soth.map._boundariesPromise = soth.map._loadBharatAtlasBoundaries();
 
     return soth.map._map;
   },
