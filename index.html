@@ -4,17 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260726a">
-<script src="config.js?v=20260726a"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260726b">
+<script src="config.js?v=20260726b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260726a"></script>
-<script src="app/core.js?v=20260726a"></script>
-<script src="app/map.js?v=20260726a"></script>
-<script src="app/maturity.js?v=20260726a"></script>
-<script src="app/capture.js?v=20260726a"></script>
-<script src="app/superset.js?v=20260726a"></script>
+<script src="data/lgd.js?v=20260726b"></script>
+<script src="app/core.js?v=20260726b"></script>
+<script src="app/map.js?v=20260726b"></script>
+<script src="app/maturity.js?v=20260726b"></script>
+<script src="app/capture.js?v=20260726b"></script>
+<script src="app/superset.js?v=20260726b"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -120,6 +120,8 @@ soth.renderMap = async function () {
   const maturityByOrg = {};
   filteredOrgs.forEach((o, i) => { maturityByOrg[o.id] = maturities[i]; });
 
+  // Build village -> orgs mapping (a village can have multiple partner orgs)
+  const villageMap = {}; // village_id -> { village, orgs: [ { org, maturity } ] }
   for (const org of filteredOrgs) {
     const villages = await soth.data.orgVillages(org.id);
     const maturity = maturityByOrg[org.id];
@@ -132,14 +134,27 @@ soth.renderMap = async function () {
         const hasTheme = caps.some(c => c.sub_parameters?.theme_id === themeFilter);
         if (!hasTheme) continue;
       }
-      const orgMaturity = maturity.overall;
-      const color = orgMaturity ? soth.map.maturityColor(orgMaturity) : '#94a3b8';
-      soth.map.addVillagePin(v, org, {
-        color,
-        maturity: Math.round(orgMaturity),
-        onClick: () => soth.openVillageInPanel(org.id, v.id, v.name)
+      if (!villageMap[v.id]) {
+        villageMap[v.id] = { village: v, orgs: [] };
+      }
+      villageMap[v.id].orgs.push({
+        org,
+        maturity: Math.round(maturity.overall),
+        color: maturity.overall ? soth.map.maturityColor(maturity.overall) : '#94a3b8',
       });
     }
+  }
+
+  // Render one pin per village (color from the first org, or average maturity)
+  for (const vid in villageMap) {
+    const { village, orgs } = villageMap[vid];
+    // Use the highest maturity color among this village's orgs
+    const bestOrg = orgs.sort((a, b) => b.maturity - a.maturity)[0];
+    soth.map.addVillagePin(village, bestOrg.org, {
+      color: bestOrg.color,
+      maturity: bestOrg.maturity,
+      allOrgs: orgs.map(o => ({ id: o.org.id, name: o.org.name, maturity: o.maturity, color: o.color })),
+    });
   }
 };
 

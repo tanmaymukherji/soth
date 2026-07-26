@@ -84,22 +84,70 @@ soth.map = {
     if (isNaN(lat) || isNaN(lng)) return null;
 
     const pinColor = options.color || '#2563eb';
+
+    // Register a click index for popup "View Details" buttons.
+    if (!soth.map._pinClickRegistry) soth.map._pinClickRegistry = {};
+    const pinKey = 'pin_' + village.id;
+    // Store the handler list; regenerate each render.
+    soth.map._pinClickRegistry[pinKey] = {
+      village: { id: village.id, name: village.name },
+      orgs: (options.allOrgs || []).map(o => ({ id: o.id, name: o.name })),
+    };
+
+    // Build popup with village info + list of contributing orgs
+    let orgsHtml = '';
+    if (options.allOrgs && options.allOrgs.length) {
+      const orgLines = options.allOrgs.map((o, idx) => {
+        const onclickHandler = `soth.map.openPanelByIndex('${pinKey}', ${idx})`;
+        return `<div style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span>
+            <span style="color:${o.color};font-weight:500;font-size:13px;">${soth.ui.escapeHtml(o.name)}</span>
+            <span style="font-size:11px;color:#666;"> — ${o.maturity}%</span>
+          </span>
+          <button onclick="${onclickHandler}" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 6px;text-decoration:underline;">View details</button>
+        </div>`;
+      }).join('');
+      orgsHtml = `<div style="margin-top:6px;max-height:240px;overflow-y:auto;">${orgLines}</div>`;
+    } else if (org) {
+      const onclickHandler = `soth.map.openPanelByIndex('${pinKey}', 0)`;
+      orgsHtml = `<div style="margin-top:4px;">
+        <span style="color:#2563eb;font-weight:500;font-size:13px;">${soth.ui.escapeHtml(org.name)}</span>
+        ${options.maturity != null ? `<span style="font-size:11px;color:#666;"> — ${options.maturity}%</span>` : ''}
+      </div>`;
+      // Fallback: if no allOrgs, store single-org in registry
+      soth.map._pinClickRegistry[pinKey].orgs = [{ id: org.id, name: org.name }];
+      orgsHtml += `<div style="margin-top:4px;"><button onclick="${onclickHandler}" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 0;text-decoration:underline;">View details</button></div>`;
+    }
+
     const popupHtml = `
-      <div style="font-family:sans-serif;font-size:13px;line-height:1.4;min-width:180px;">
-        <strong>${soth.ui.escapeHtml(village.name)}</strong><br>
-        <span style="color:#666;">${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span><br>
-        ${org ? `<span style="color:#2563eb;">${soth.ui.escapeHtml(org.name)}</span>` : ''}
-        ${options.maturity ? `<br><span style="font-size:12px;">Maturity: ${options.maturity}%</span>` : ''}
-        ${options.detailUrl ? `<br><a href="${options.detailUrl}" style="color:#2563eb;font-size:12px;">View details </a>` : ''}
+      <div style="font-family:sans-serif;font-size:13px;line-height:1.4;min-width:200px;max-width:320px;">
+        <strong style="font-size:14px;">${soth.ui.escapeHtml(village.name)}</strong><br>
+        <span style="color:#666;font-size:12px;">${soth.ui.escapeHtml(village.district)}, ${soth.ui.escapeHtml(village.state)}</span>
+        ${orgsHtml}
       </div>`;
 
     const marker = L.circleMarker([lat, lng], {
       radius: 7, fillColor: pinColor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
     }).addTo(soth.map._map);
-    marker.bindPopup(popupHtml);
+    marker.bindPopup(popupHtml, { maxHeight: 300 });
     if (options.onClick) marker.on('click', options.onClick);
     soth.map._markers.push(marker);
     return marker;
+  },
+
+  // Called from popup buttons to open the village side panel for a specific org
+  openPanelByIndex: function (pinKey, orgIndex) {
+    const entry = soth.map._pinClickRegistry?.[pinKey];
+    if (!entry || !entry.orgs[orgIndex]) return;
+    const org = entry.orgs[orgIndex];
+    const villageName = entry.orgs.length > 1
+      ? `${entry.village.name} (${org.name})`
+      : entry.village.name;
+    // Close the popup so the side panel is visible
+    if (soth.map._map) soth.map._map.closePopup();
+    if (typeof soth.openVillageInPanel === 'function') {
+      soth.openVillageInPanel(org.id, entry.village.id, entry.village.name);
+    }
   },
 
   addVillages: function (villages, org) {
@@ -116,6 +164,7 @@ soth.map = {
   clearMarkers: function () {
     soth.map._markers.forEach(m => m?.remove?.());
     soth.map._markers = [];
+    soth.map._pinClickRegistry = {};
   },
 
   // Helper: clean village name (remove parenthetical suffixes, extra spaces)

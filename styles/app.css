@@ -1010,6 +1010,9 @@ textarea { resize: vertical; min-height: 60px; }
 .theme-summary-table .expand-icon.open {
   transform: rotate(90deg);
 }
+.theme-summary-table .theme-row.active-theme {
+  background: var(--primary-light);
+}
 
 /* Tier 2 sub-parameter editor */
 .tier2-panel {
@@ -1029,7 +1032,7 @@ textarea { resize: vertical; min-height: 60px; }
   margin: 0;
   font-size: 16px;
 }
-.tier-detail.hidden {
+.tier2-panels > .tier2-panel.hidden {
   display: none;
 }
 

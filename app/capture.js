@@ -76,7 +76,7 @@ soth.capture = {
           <div class="theme-table-wrap">${tableHtml}</div>
         </div>
       </div>
-      <div id="tier2-container" class="tier-detail hidden"></div>
+      <div id="tier2-container" class="tier2-panels"></div>
     `;
 
     // Build radar chart
@@ -123,7 +123,7 @@ soth.capture = {
     let html = '';
     maturity.themes.forEach(t => {
       const params = paramsByTheme[t.id] || [];
-      html += `<div class="tier2-panel" id="tier2-${t.id}" style="display:none;">`;
+      html += `<div class="tier2-panel hidden" id="tier2-${t.id}">`;
       html += `<div class="tier2-header">
         <h3>${soth.ui.escapeHtml(t.name)}</h3>
         <button class="btn btn-small btn-outline" onclick="soth.capture.toggleTier2('${t.id}')">Close</button>
@@ -187,16 +187,19 @@ soth.capture = {
     const row = document.querySelector(`.theme-row[data-theme-id="${themeId}"]`);
     const icon = row?.querySelector('.expand-icon');
     if (!panel) return;
-    const isOpen = panel.style.display !== 'none';
+    const isOpen = !panel.classList.contains('hidden');
     if (isOpen) {
-      panel.style.display = 'none';
+      panel.classList.add('hidden');
       if (icon) icon.textContent = '▸';
+      row?.classList.remove('active-theme');
     } else {
       // Close all other panels
-      document.querySelectorAll('.tier2-panel').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.tier2-panel').forEach(p => p.classList.add('hidden'));
       document.querySelectorAll('.expand-icon').forEach(i => i.textContent = '▸');
-      panel.style.display = 'block';
+      document.querySelectorAll('.theme-row').forEach(r => r.classList.remove('active-theme'));
+      panel.classList.remove('hidden');
       if (icon) icon.textContent = '▾';
+      row?.classList.add('active-theme');
       panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   },
