@@ -4,28 +4,31 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Partner - SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260727a">
-<script src="config.js?v=20260727a"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260727b">
+<script src="config.js?v=20260727b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260727a"></script>
-<script src="app/core.js?v=20260727a"></script>
-<script src="app/map.js?v=20260727a"></script>
-<script src="app/maturity.js?v=20260727a"></script>
-<script src="app/capture.js?v=20260727a"></script>
+<script src="data/lgd.js?v=20260727b"></script>
+<script src="app/core.js?v=20260727b"></script>
+<script src="app/map.js?v=20260727b"></script>
+<script src="app/maturity.js?v=20260727b"></script>
+<script src="app/capture.js?v=20260727b"></script>
 <style>
-.partner-hero { display:flex; align-items:center; justify-content:space-between; padding:20px 0; border-bottom:1px solid var(--gray-200); margin-bottom:20px; }
+.partner-hero { display:flex; align-items:center; justify-content:space-between; padding:20px 0; border-bottom:1px solid var(--gray-200); margin-bottom:16px; }
 .partner-hero h1 { margin:0; font-size:24px; }
 .partner-hero .back-link { font-size:13px; color:var(--gray-500); text-decoration:none; }
 .partner-hero .back-link:hover { color:var(--primary); }
-.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
-.stats-row .stat-card { padding:16px; }
-.radar-section { margin-bottom:24px; }
-.params-body { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; margin-bottom:24px; }
+.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+.stats-row .stat-card { padding:14px; }
+.filter-row { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+.filter-row select { min-width:180px; }
+.edit-village-btn { display:inline-block; margin-left:12px; }
+.radar-section { margin-bottom:20px; text-align:center; }
+.params-body { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
 @media (max-width:900px) { .params-body { grid-template-columns:1fr; } }
-.params-body .section-title { font-weight:600; margin-bottom:8px; font-size:14px; }
-.params-body .empty-hint { color:var(--gray-400); font-size:13px; font-style:italic; padding:20px 0; text-align:center; }
+.section-title { font-weight:600; margin-bottom:8px; font-size:14px; }
+.empty-hint { color:var(--gray-400); font-size:13px; font-style:italic; padding:20px 0; text-align:center; }
 .theme-table { width:100%; border-collapse:collapse; font-size:13px; }
 .theme-table th,.theme-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--gray-200); }
 .theme-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -35,15 +38,8 @@
 .subparam-table { width:100%; border-collapse:collapse; font-size:13px; }
 .subparam-table th,.subparam-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--gray-200); }
 .subparam-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:11px; text-transform:uppercase; }
-.village-section { margin-top:24px; }
-.village-section h3 { margin:0 0 12px 0; }
-.filter-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
-.filter-row select,.filter-row input { flex:1; min-width:150px; }
-.village-table { width:100%; border-collapse:collapse; font-size:13px; }
-.village-table th,.village-table td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--gray-200); }
-.village-table th { background:var(--gray-50); font-weight:600; color:var(--gray-600); font-size:12px; text-transform:uppercase; }
-.village-table tbody tr:hover { background:var(--gray-50); }
 .expand-icon { font-size:12px; color:var(--gray-500); display:inline-block; transition:transform 0.2s; }
+.scope-label { font-size:12px; color:var(--gray-500); margin-bottom:4px; }
 </style>
 </head>
 <body>
@@ -70,13 +66,14 @@
 </main>
 
 <script>
+soth._partnerChart = null;
+
 soth.renderPartnerPage = async function (orgId, orgName) {
   const container = document.getElementById('partner-page');
 
-  // 1. Fetch all data in parallel
-  const [orgVillages, maturity, themes, allSubParams] = await Promise.all([
+  // Fetch all data
+  const [orgVillages, themes, allSubParams] = await Promise.all([
     soth.data.orgVillages(orgId),
-    soth.maturity.compute(orgId),
     soth.data.themes(),
     soth.data.allSubParams(),
   ]);
@@ -84,16 +81,15 @@ soth.renderPartnerPage = async function (orgId, orgName) {
   const allVillages = orgVillages.map(ov => ov.villages).filter(Boolean);
   const statesSet = new Set(allVillages.map(v => v.state).filter(Boolean));
   const uniqueStates = [...statesSet].sort();
+  const allVillagesSorted = [...allVillages].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-  // Captures per village
+  // All captures for this org
   const capsRes = await soth.sb().from('latest_captures').select('*').eq('org_id', orgId);
   const capByVillage = {};
   (capsRes?.data || []).forEach(c => {
     if (!capByVillage[c.village_id]) capByVillage[c.village_id] = {};
     capByVillage[c.village_id][c.sub_parameter_id] = c;
   });
-  const withData = Object.keys(capByVillage).length;
-  const withoutData = allVillages.length - withData;
 
   // Params by theme
   const paramsByTheme = {};
@@ -102,7 +98,16 @@ soth.renderPartnerPage = async function (orgId, orgName) {
     paramsByTheme[p.theme_id].push(p);
   });
 
-  // Build page HTML
+  // Store globally for filter callbacks
+  soth._pOrgId = orgId;
+  soth._pOrgName = orgName;
+  soth._pThemes = themes;
+  soth._pParamsByTheme = paramsByTheme;
+  soth._pCapByVillage = capByVillage;
+  soth._pAllVillages = allVillages;
+  soth._pUniqueStates = uniqueStates;
+
+  // Build static HTML shell
   let html = '';
 
   // Hero
@@ -111,106 +116,147 @@ soth.renderPartnerPage = async function (orgId, orgName) {
       <a href="index.html" class="back-link">&larr; Back to Map</a>
       <h1>${soth.ui.escapeHtml(orgName)}</h1>
     </div>
-    <div style="text-align:right;">
-      <div style="font-size:36px;font-weight:700;color:${soth.map.maturityColor(maturity.overall)};">${maturity.overall}%</div>
-      <div style="font-size:12px;color:var(--gray-500);">Overall Maturity</div>
-    </div>
+    <div id="hero-score" style="text-align:right;"></div>
   </div>`;
 
   // Stats
-  html += `<div class="stats-row">
-    <div class="stat-card"><div class="stat-value">${allVillages.length}</div><div class="stat-label">Villages</div></div>
-    <div class="stat-card"><div class="stat-value">${uniqueStates.length}</div><div class="stat-label">States</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--success);">${withData}</div><div class="stat-label">With Data</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--danger);">${withoutData}</div><div class="stat-label">Without Data</div></div>
-  </div>`;
+  html += `<div class="stats-row" id="stats-row"></div>`;
 
-  // Filters (right below stats)
-  const allVillagesSorted = [...allVillages].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  html += `<div class="filter-row" style="margin-bottom:20px;">
-    <select id="v-state-filter" onchange="soth.onStateFilterChange()">
+  // Filters
+  html += `<div class="filter-row">
+    <select id="v-state-filter" onchange="soth.onFilterChange()">
       <option value="">All States</option>
       ${uniqueStates.map(s => `<option value="${soth.ui.escapeHtml(s)}">${soth.ui.escapeHtml(s)}</option>`).join('')}
     </select>
-    <select id="v-village-filter" onchange="soth.onVillageFilterChange()">
+    <select id="v-village-filter" onchange="soth.onFilterChange()">
       <option value="">All Villages (${allVillagesSorted.length})</option>
       ${allVillagesSorted.map(v => `<option value="${v.id}">${soth.ui.escapeHtml(v.name)} — ${soth.ui.escapeHtml(v.district || '')}</option>`).join('')}
     </select>
+    <span id="edit-village-btn"></span>
   </div>`;
 
-  // Spider chart on top (full width)
+  // Scope label
+  html += `<div class="scope-label" id="scope-label">Showing: All villages</div>`;
+
+  // Radar
   html += `<div class="radar-section">
-    <div style="font-weight:600;margin-bottom:8px;">Theme Scores</div>
     <div style="height:300px;max-width:500px;margin:0 auto;"><canvas id="partner-radar"></canvas></div>
   </div>`;
 
-  // Parameters (left) + Sub-Parameters (right) side by side
-  html += `<div class="params-body">`;
-
-  // Left: theme table
-  html += `<div>
-    <div class="section-title">Parameters</div>
-    <table class="theme-table" id="theme-table"><thead><tr><th>Theme</th><th>Score</th><th>Captured</th><th></th></tr></thead><tbody>`;
-  themes.forEach(t => {
-    const ts = maturity.themes.find(mt => mt.id === t.id);
-    const score = ts?.score || 0;
-    const captured = ts?.capturedParams || 0;
-    const total = (paramsByTheme[t.id] || []).length;
-    const color = soth.map.maturityColor(score);
-    html += `<tr data-theme-id="${t.id}" onclick="soth.toggleTheme('${t.id}')">
-      <td><strong>${soth.ui.escapeHtml(t.name)}</strong></td>
-      <td><span style="background:${color};color:white;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;">${score}%</span></td>
-      <td>${captured}/${total}</td>
-      <td><span class="expand-icon">▸</span></td>
-    </tr>`;
-  });
-  html += '</tbody></table></div>';
-
-  // Right: sub-parameter table (updates when a theme is clicked)
-  html += `<div>
-    <div class="section-title">Sub-Parameters</div>
-    <div id="subparam-container"><p class="empty-hint">Click a theme on the left to view its sub-parameters</p></div>
+  // Params + Sub-params
+  html += `<div class="params-body">
+    <div>
+      <div class="section-title">Parameters</div>
+      <div id="theme-table-container"></div>
+    </div>
+    <div>
+      <div class="section-title">Sub-Parameters</div>
+      <div id="subparam-container"><p class="empty-hint">Click a theme on the left to view its sub-parameters</p></div>
+    </div>
   </div>`;
-
-  html += '</div>';
-
-  // Village list
-  html += `<div class="village-section">
-    <h3>Villages (${allVillages.length})</h3>
-    <div style="max-height:400px;overflow-y:auto;">
-      <table class="village-table" id="village-table"><thead><tr><th>Village</th><th>District</th><th>State</th><th>Data</th><th></th></tr></thead><tbody>`;
-  allVillages.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(v => {
-    const hasData = capByVillage[v.id];
-    html += `<tr class="vrow" data-state="${soth.ui.escapeHtml(v.state || '')}" data-village-id="${v.id}">
-      <td><strong>${soth.ui.escapeHtml(v.name)}</strong></td>
-      <td>${soth.ui.escapeHtml(v.district || '')}</td>
-      <td>${soth.ui.escapeHtml(v.state || '')}</td>
-      <td>${hasData ? '<span style="color:var(--success);">✓</span>' : '<span style="color:var(--danger);">✗</span>'}</td>
-      <td><a href="village.html?org=${orgId}&village=${v.id}" class="btn btn-small btn-outline">Edit</a></td>
-    </tr>`;
-  });
-  html += '</tbody></table></div></div>';
 
   container.innerHTML = html;
 
-  // Store data for toggleTheme to access
-  soth._partnerParamsByTheme = paramsByTheme;
-  soth._partnerCapByVillage = capByVillage;
-  soth._partnerVillageCount = allVillages.length;
-  soth._partnerAllVillages = allVillages;
+  // Initial render
+  soth.updatePartnerView();
+};
 
-  // Build radar chart
-  if (maturity.themes.length) {
-    new Chart(document.getElementById('partner-radar'), {
+soth.updatePartnerView = function () {
+  const state = document.getElementById('v-state-filter')?.value || '';
+  const villageId = document.getElementById('v-village-filter')?.value || '';
+  const themes = soth._pThemes || [];
+  const paramsByTheme = soth._pParamsByTheme || {};
+  const capByVillage = soth._pCapByVillage || {};
+  const allVillages = soth._pAllVillages || [];
+  const orgId = soth._pOrgId;
+
+  // Determine scope
+  let scopeVillages = allVillages;
+  let scopeLabel = 'Showing: All villages';
+  if (villageId) {
+    const v = allVillages.find(x => x.id === villageId);
+    scopeVillages = v ? [v] : [];
+    scopeLabel = 'Showing: ' + (v?.name || 'Village');
+  } else if (state) {
+    scopeVillages = allVillages.filter(v => v.state === state);
+    scopeLabel = 'Showing: ' + state + ' (' + scopeVillages.length + ' villages)';
+  }
+
+  const scopeVillageIds = new Set(scopeVillages.map(v => v.id));
+  const withData = scopeVillages.filter(v => capByVillage[v.id]).length;
+  const withoutData = scopeVillages.length - withData;
+  const uniqueStatesInScope = new Set(scopeVillages.map(v => v.state).filter(Boolean)).size;
+
+  // Update scope label
+  const scopeEl = document.getElementById('scope-label');
+  if (scopeEl) scopeEl.textContent = scopeLabel;
+
+  // Update hero score
+  const heroEl = document.getElementById('hero-score');
+  if (heroEl) {
+    const overallScore = soth.computeScopeScore(scopeVillages, themes, paramsByTheme, capByVillage);
+    const color = soth.map.maturityColor(overallScore);
+    heroEl.innerHTML = `<div style="font-size:36px;font-weight:700;color:${color};">${overallScore}%</div>
+      <div style="font-size:12px;color:var(--gray-500);">${villageId ? 'Village' : state ? 'State' : 'Overall'} Maturity</div>`;
+  }
+
+  // Update stats
+  const statsEl = document.getElementById('stats-row');
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <div class="stat-card"><div class="stat-value">${scopeVillages.length}</div><div class="stat-label">Villages</div></div>
+      <div class="stat-card"><div class="stat-value">${uniqueStatesInScope}</div><div class="stat-label">States</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--success);">${withData}</div><div class="stat-label">With Data</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--danger);">${withoutData}</div><div class="stat-label">Without Data</div></div>`;
+  }
+
+  // Update Edit button
+  const editBtn = document.getElementById('edit-village-btn');
+  if (editBtn) {
+    if (villageId) {
+      editBtn.innerHTML = `<a href="village.html?org=${orgId}&village=${villageId}" class="btn btn-primary btn-small">Edit Village Data</a>`;
+    } else {
+      editBtn.innerHTML = '';
+    }
+  }
+
+  // Compute per-theme scores for scope
+  const themeScores = themes.map(t => {
+    const params = paramsByTheme[t.id] || [];
+    let sum = 0, counted = 0, capturedParams = 0;
+    const themeCaptures = [];
+    params.forEach(p => {
+      let villageHasCaptured = false;
+      for (const vid of scopeVillageIds) {
+        const cap = capByVillage[vid]?.[p.id];
+        if (cap) {
+          villageHasCaptured = true;
+          capturedParams++;
+          const s = cap.value_scale != null ? cap.value_scale : null;
+          if (s != null) { sum += s; counted++; }
+          break;
+        }
+      }
+      if (villageHasCaptured) themeCaptures.push(p);
+    });
+    const score = counted ? Math.round(sum / counted) : 0;
+    return { id: t.id, name: t.name, score, capturedParams, totalParams: params.length };
+  });
+
+  // Update radar chart
+  const canvas = document.getElementById('partner-radar');
+  if (canvas) {
+    if (soth._partnerChart) soth._partnerChart.destroy();
+    soth._partnerChart = new Chart(canvas, {
       type: 'radar',
       data: {
-        labels: maturity.themes.map(t => t.name),
+        labels: themeScores.map(t => t.name),
         datasets: [{
-          label: 'Theme Score',
-          data: maturity.themes.map(t => t.score),
+          label: 'Score',
+          data: themeScores.map(t => t.score),
           backgroundColor: 'rgba(37,99,235,0.1)',
           borderColor: '#2563eb',
-          pointBackgroundColor: maturity.themes.map(t => soth.map.maturityColor(t.score)),
+          pointBackgroundColor: themeScores.map(t => soth.map.maturityColor(t.score)),
           pointRadius: 5,
           borderWidth: 2,
         }],
@@ -223,6 +269,44 @@ soth.renderPartnerPage = async function (orgId, orgName) {
       }
     });
   }
+
+  // Update theme table
+  const tableEl = document.getElementById('theme-table-container');
+  if (tableEl) {
+    let thtml = '<table class="theme-table" id="theme-table"><thead><tr><th>Theme</th><th>Score</th><th>Captured</th><th></th></tr></thead><tbody>';
+    themeScores.forEach(t => {
+      const color = soth.map.maturityColor(t.score);
+      thtml += `<tr data-theme-id="${t.id}" onclick="soth.toggleTheme('${t.id}')">
+        <td><strong>${soth.ui.escapeHtml(t.name)}</strong></td>
+        <td><span style="background:${color};color:white;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;">${t.score}%</span></td>
+        <td>${t.capturedParams}/${t.totalParams}</td>
+        <td><span class="expand-icon">▸</span></td>
+      </tr>`;
+    });
+    thtml += '</tbody></table>';
+    tableEl.innerHTML = thtml;
+  }
+
+  // Clear sub-param panel
+  const subEl = document.getElementById('subparam-container');
+  if (subEl) subEl.innerHTML = '<p class="empty-hint">Click a theme on the left to view its sub-parameters</p>';
+};
+
+soth.computeScopeScore = function (scopeVillages, themes, paramsByTheme, capByVillage) {
+  const scopeIds = new Set(scopeVillages.map(v => v.id));
+  let totalScore = 0, scoredThemes = 0;
+  themes.forEach(t => {
+    const params = paramsByTheme[t.id] || [];
+    let sum = 0, counted = 0;
+    params.forEach(p => {
+      for (const vid of scopeIds) {
+        const cap = capByVillage[vid]?.[p.id];
+        if (cap && cap.value_scale != null) { sum += cap.value_scale; counted++; break; }
+      }
+    });
+    if (counted) { totalScore += Math.round(sum / counted); scoredThemes++; }
+  });
+  return scoredThemes ? Math.round(totalScore / scoredThemes) : 0;
 };
 
 soth.toggleTheme = function (themeId) {
@@ -231,7 +315,6 @@ soth.toggleTheme = function (themeId) {
   const container = document.getElementById('subparam-container');
   if (!container) return;
 
-  // If already active, deselect
   const wasActive = row?.classList.contains('active-theme');
   document.querySelectorAll('#theme-table tbody tr').forEach(r => r.classList.remove('active-theme'));
   document.querySelectorAll('#theme-table .expand-icon').forEach(i => i.textContent = '▸');
@@ -244,23 +327,28 @@ soth.toggleTheme = function (themeId) {
   row?.classList.add('active-theme');
   if (icon) icon.textContent = '▾';
 
-  // Find theme data from the page's stored data
-  const themeName = row?.querySelector('td')?.textContent?.trim() || '';
-  const themeIdAttr = themeId;
+  // Build sub-param table for current scope
+  const state = document.getElementById('v-state-filter')?.value || '';
+  const villageId = document.getElementById('v-village-filter')?.value || '';
+  const allVillages = soth._pAllVillages || [];
+  const capByVillage = soth._pCapByVillage || {};
+  const paramsByTheme = soth._pParamsByTheme || {};
 
-  // Build sub-parameter table from stored data
-  const params = soth._partnerParamsByTheme?.[themeIdAttr] || [];
-  const capByVillage = soth._partnerCapByVillage || {};
-  const allVillageCount = soth._partnerVillageCount || 0;
+  let scopeVillages = allVillages;
+  if (villageId) scopeVillages = allVillages.filter(v => v.id === villageId);
+  else if (state) scopeVillages = allVillages.filter(v => v.state === state);
+  const scopeIds = new Set(scopeVillages.map(v => v.id));
 
-  let html = `<table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Type</th><th>Qualitative</th><th>Score</th><th>Villages</th></tr></thead><tbody>`;
+  const params = paramsByTheme[themeId] || [];
+  let html = '<table class="subparam-table"><thead><tr><th>Sub-Parameter</th><th>Type</th><th>Qualitative</th><th>Score</th><th>Coverage</th></tr></thead><tbody>';
   params.forEach(p => {
     let capturedCount = 0, qualVal = '', quantVal = '';
-    for (const vid in capByVillage) {
-      if (capByVillage[vid][p.id]) {
+    for (const vid of scopeIds) {
+      const cap = capByVillage[vid]?.[p.id];
+      if (cap) {
         capturedCount++;
-        if (!qualVal && capByVillage[vid][p.id].value_text) qualVal = capByVillage[vid][p.id].value_text;
-        if (quantVal == null && capByVillage[vid][p.id].value_scale != null) quantVal = capByVillage[vid][p.id].value_scale;
+        if (!qualVal && cap.value_text) qualVal = cap.value_text;
+        if (quantVal == null && cap.value_scale != null) quantVal = cap.value_scale;
       }
     }
     html += `<tr>
@@ -268,7 +356,7 @@ soth.toggleTheme = function (themeId) {
       <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
       <td>${qualVal || '—'}</td>
       <td>${quantVal != null ? quantVal + '%' : '—'}</td>
-      <td>${capturedCount}/${allVillageCount}</td>
+      <td>${capturedCount}/${scopeVillages.length}</td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -276,34 +364,19 @@ soth.toggleTheme = function (themeId) {
   container.innerHTML = html;
 };
 
-soth.filterVillages = function () {
-  const state = document.getElementById('v-state-filter')?.value || '';
-  const villageId = document.getElementById('v-village-filter')?.value || '';
-  document.querySelectorAll('.vrow').forEach(row => {
-    const rowState = row.dataset.state || '';
-    const rowId = row.dataset.villageId || '';
-    const matchState = !state || rowState === state;
-    const matchVillage = !villageId || rowId === villageId;
-    row.style.display = (matchState && matchVillage) ? '' : 'none';
-  });
-};
-
-soth.onStateFilterChange = function () {
+soth.onFilterChange = function () {
   const state = document.getElementById('v-state-filter')?.value || '';
   const villageSelect = document.getElementById('v-village-filter');
-  if (!villageSelect || !soth._partnerAllVillages) return;
+  const allVillages = soth._pAllVillages || [];
+
   // Rebuild village dropdown filtered by state
-  const filtered = state
-    ? soth._partnerAllVillages.filter(v => v.state === state)
-    : soth._partnerAllVillages;
+  const filtered = state ? allVillages.filter(v => v.state === state) : allVillages;
   const sorted = [...filtered].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   villageSelect.innerHTML = `<option value="">All Villages (${sorted.length})</option>` +
     sorted.map(v => `<option value="${v.id}">${soth.ui.escapeHtml(v.name)} — ${soth.ui.escapeHtml(v.district || '')}</option>`).join('');
-  soth.filterVillages();
-};
 
-soth.onVillageFilterChange = function () {
-  soth.filterVillages();
+  // Re-render everything
+  soth.updatePartnerView();
 };
 
 (async function () {
