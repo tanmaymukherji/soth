@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p _site
           cp -r \
-            index.html login.html dashboard.html village.html \
+            index.html login.html dashboard.html village.html partner.html \
             superset.html compare.html admin.html \
             config.js config.example.js \
             app/ styles/ data/ \
