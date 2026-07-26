@@ -125,6 +125,15 @@ soth.renderPartnerPage = async function (orgId, orgName) {
     <div class="stat-card"><div class="stat-value" style="color:var(--danger);">${withoutData}</div><div class="stat-label">Without Data</div></div>
   </div>`;
 
+  // Filters (right below stats)
+  html += `<div class="filter-row" style="margin-bottom:20px;">
+    <select id="v-state-filter" onchange="soth.filterVillages()">
+      <option value="">All States</option>
+      ${uniqueStates.map(s => `<option value="${soth.ui.escapeHtml(s)}">${soth.ui.escapeHtml(s)}</option>`).join('')}
+    </select>
+    <input type="text" id="v-search" placeholder="Search villages..." oninput="soth.filterVillages()">
+  </div>`;
+
   // Spider chart on top (full width)
   html += `<div class="radar-section">
     <div style="font-weight:600;margin-bottom:8px;">Theme Scores</div>
@@ -164,13 +173,6 @@ soth.renderPartnerPage = async function (orgId, orgName) {
   // Village list
   html += `<div class="village-section">
     <h3>Villages (${allVillages.length})</h3>
-    <div class="filter-row">
-      <select id="v-state-filter" onchange="soth.filterVillages()">
-        <option value="">All States</option>
-        ${uniqueStates.map(s => `<option value="${soth.ui.escapeHtml(s)}">${soth.ui.escapeHtml(s)}</option>`).join('')}
-      </select>
-      <input type="text" id="v-search" placeholder="Search villages..." oninput="soth.filterVillages()">
-    </div>
     <div style="max-height:400px;overflow-y:auto;">
       <table class="village-table" id="village-table"><thead><tr><th>Village</th><th>District</th><th>State</th><th>Data</th><th></th></tr></thead><tbody>`;
   allVillages.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(v => {
