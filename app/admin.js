@@ -426,6 +426,7 @@ soth.admin = {
         <td>
           <button class="btn btn-small" onclick="soth.admin.showVillageForm('${v.id}')">Edit</button>
           <button class="btn btn-small btn-outline" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
+          <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeHtml(v.name)}')">Delete</button>
         </td>
       </tr>`;
     });
@@ -466,6 +467,7 @@ soth.admin = {
         <td>
           <button class="btn btn-small" onclick="soth.admin.showVillageForm('${v.id}')">Edit</button>
           <button class="btn btn-small btn-outline" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
+          <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeHtml(v.name)}')">Delete</button>
         </td>
       </tr>`;
     });
@@ -814,7 +816,10 @@ soth.admin = {
           <td>${soth.ui.escapeHtml(v.district)}</td>
           <td>${soth.ui.escapeHtml(v.state)}</td>
           <td><span class="status-badge status-${v.geocode_status}">${v.geocode_status}</span></td>
-          <td><button class="btn btn-small" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button></td>
+          <td>
+            <button class="btn btn-small" onclick="soth.admin.geocodeSingle('${v.id}')">Geocode</button>
+            <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteVillage('${v.id}','${soth.ui.escapeHtml(v.name)}')">Delete</button>
+          </td>
         </tr>`;
       });
       html += '</tbody></table>';
@@ -855,5 +860,37 @@ soth.admin = {
     if (btn) { btn.textContent = 'Batch Geocode All'; btn.disabled = false; }
     soth.ui.showToast(`Geocoded ${count} / ${pending?.length || 0} villages`, count > 0 ? 'success' : 'info');
     soth.admin.showSection('geocoding');
+  },
+
+  deleteVillage: async function (villageId, villageName) {
+    const modal = document.getElementById('admin-modal');
+    if (!modal) return;
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:450px;">
+        <h3 style="color:var(--danger);">Delete Village</h3>
+        <p style="margin:12px 0;font-size:14px;">
+          Are you sure you want to delete <strong>${soth.ui.escapeHtml(villageName)}</strong>?
+        </p>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">
+          This will permanently delete all captures, org links, and the village record. This action cannot be undone.
+        </p>
+        <div class="form-actions">
+          <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);" onclick="soth.admin.doDeleteVillage('${villageId}')">Delete Permanently</button>
+          <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </div>`;
+    modal.classList.remove('hidden');
+  },
+
+  doDeleteVillage: async function (villageId) {
+    const sb = soth.sb();
+    const { error } = await sb.from('villages').delete().eq('id', villageId);
+    document.getElementById('admin-modal').classList.add('hidden');
+    if (error) { soth.ui.showToast('Error: ' + error.message, 'error'); return; }
+    soth.ui.showToast('Village deleted', 'success');
+    // Refresh current section
+    const activeBtn = document.querySelector('.admin-nav-btn.active');
+    const section = activeBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages';
+    soth.admin.showSection(section);
   }
 };
