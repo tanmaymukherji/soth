@@ -381,10 +381,176 @@ soth.ui = {
   }
 };
 
+// --- Add Village (available on all pages) ---
+
+soth._lgdSearchTimeout = null;
+
+soth.searchLGDVillage = function () {
+  const input = document.getElementById('av-name');
+  const results = document.getElementById('lgd-results');
+  if (!input || !results) return;
+  const q = input.value.trim();
+  if (q.length < 2) { results.style.display = 'none'; return; }
+
+  clearTimeout(soth._lgdSearchTimeout);
+  soth._lgdSearchTimeout = setTimeout(async () => {
+    results.innerHTML = '<div style="padding:8px;color:var(--gray-500);font-size:12px;">Searching...</div>';
+    results.style.display = '';
+    try {
+      const r = await fetch('https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=' + encodeURIComponent(q) + '&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax&limit=10');
+      if (!r.ok) { results.style.display = 'none'; return; }
+      const data = await r.json();
+      if (!data?.data?.rows?.length) {
+        results.innerHTML = '<div style="padding:8px;color:var(--gray-500);font-size:12px;">No matches in LGD database.</div>';
+        return;
+      }
+      let html = data.data.rows.map((v) => {
+        const lat = v.xmin != null ? ((parseFloat(v.ymin) + parseFloat(v.ymax)) / 2).toFixed(6) : '';
+        const lng = v.xmin != null ? ((parseFloat(v.xmin) + parseFloat(v.xmax)) / 2).toFixed(6) : '';
+        return '<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;" ' +
+          'onclick="soth.selectLGDVillage(\'' + v.vilname11.replace(/'/g, "\\'") + '\',\'' + (v.dtname || '').replace(/'/g, "\\'") + '\',\'' + (v.stname || '').replace(/'/g, "\\'") + '\',' + lat + ',' + lng + ')">' +
+          '<strong>' + soth.ui.escapeHtml(v.vilname11) + '</strong> - ' + soth.ui.escapeHtml(v.dtname || '') + ', ' + soth.ui.escapeHtml(v.stname || '') +
+          (lat ? ' <span style="color:var(--gray-400);font-size:11px;">(' + lat + ', ' + lng + ')</span>' : '') +
+          '</div>';
+      }).join('');
+      results.innerHTML = html;
+    } catch (e) {
+      results.style.display = 'none';
+    }
+  }, 500);
+};
+
+soth.selectLGDVillage = function (name, district, state, lat, lng) {
+  document.getElementById('av-name').value = name;
+  if (district) document.getElementById('av-district').value = district;
+  if (state) { const sel = document.getElementById('av-state'); for (let i = 0; i < sel.options.length; i++) { if (sel.options[i].value.toLowerCase() === state.toLowerCase()) { sel.selectedIndex = i; break; } } }
+  if (lat && lng) {
+    soth._pendingLat = lat;
+    soth._pendingLng = lng;
+  }
+  document.getElementById('lgd-results').style.display = 'none';
+};
+
+soth.showAddVillage = async function () {
+  // Ensure admin-modal exists
+  let modal = document.getElementById('admin-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'admin-modal';
+    modal.className = 'modal-overlay hidden';
+    document.body.appendChild(modal);
+  }
+  const { data: states } = await soth.sb().from('villages').select('distinct state');
+  const stateOpts = (states || []).map(s => `<option value="${s.state}">${s.state}</option>`).join('');
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3>Add Village</h3>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">
+        Enter a village name to search BharatAtlas LGD database for auto-geocoding.
+      </p>
+      <form id="add-village-form">
+        <label>Village Name *<input type="text" id="av-name" required oninput="soth.searchLGDVillage()" placeholder="Type to search LGD database..."></label>
+        <div id="lgd-results" style="max-height:200px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:4px;margin-bottom:8px;display:none;"></div>
+        <label>Gram Panchayat<input type="text" id="av-gp"></label>
+        <label>Block<input type="text" id="av-block"></label>
+        <label>District *<input type="text" id="av-district" required placeholder="Enter district name"></label>
+        <label>State *<select id="av-state" required>${stateOpts}</select></label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Add Village</button>
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </form>
+    </div>`;
+  modal.classList.remove('hidden');
+  soth._lgdSearchTimeout = null;
+
+  document.getElementById('add-village-form').onsubmit = async function (e) {
+    e.preventDefault();
+    const name = document.getElementById('av-name').value.trim();
+    const gp = document.getElementById('av-gp').value.trim();
+    const block = document.getElementById('av-block').value.trim();
+    const district = document.getElementById('av-district').value.trim();
+    const state = document.getElementById('av-state').value;
+
+    const sb = soth.sb();
+    const { data: existing } = await sb.from('villages').select('*')
+      .eq('name', name).eq('district', district).eq('state', state).maybeSingle();
+    let villageId;
+    if (existing) {
+      villageId = existing.id;
+    } else {
+      const { data: newV } = await sb.from('villages').insert({ name, gram_panchayat: gp, block, district, state })
+        .select().single();
+      if (!newV) { soth.ui.showToast('Error creating village', 'error'); return; }
+      villageId = newV.id;
+      if (soth._pendingLat && soth._pendingLng) {
+        await sb.from('villages').update({
+          lat: parseFloat(soth._pendingLat), lng: parseFloat(soth._pendingLng),
+          geocode_source: 'bharatlas', geocode_label: 'LGD village centroid',
+          geocoded_at: new Date().toISOString(), geocode_status: 'geocoded'
+        }).eq('id', villageId);
+        soth._pendingLat = null; soth._pendingLng = null;
+      } else {
+        let result = await soth.map.geocodeViaBharatAtlas({ name, district, state });
+        if (!result?.lat) result = await soth.map.geocodeViaGramEEE({ name, district, state });
+        if (!result?.lat) result = await soth.map.geocodeVillage({ name, district, state });
+        if (result?.lat) {
+          await sb.from('villages').update({
+            lat: result.lat, lng: result.lng,
+            geocode_source: result.source || 'mappls',
+            geocode_label: result.label || '',
+            geocoded_at: new Date().toISOString(), geocode_status: 'geocoded'
+          }).eq('id', villageId);
+        }
+      }
+    }
+
+    // Link org to village
+    if (soth.currentProfile?.org_id) {
+      const { error } = await sb.from('org_villages').upsert({
+        org_id: soth.currentProfile.org_id, village_id: villageId, start_date: new Date().toISOString().split('T')[0], status: 'active'
+      }, { onConflict: 'org_id,village_id' });
+      if (error) { soth.ui.showToast(error.message, 'error'); return; }
+    }
+
+    soth.ui.showToast('Village added!', 'success');
+    modal.classList.add('hidden');
+    // Reload if on dashboard, otherwise just close
+    if (typeof soth.loadDashboard === 'function') {
+      await soth.loadDashboard();
+    }
+  };
+};
+
 // Init on DOM ready
 document.addEventListener('DOMContentLoaded', async function () {
   soth.initSupabase();
   soth.auth.init();
+
+  // Inject "Add Village" button into nav for logged-in users
+  const injectAddVillageBtn = function () {
+    if (!soth.currentUser) return;
+    if (document.getElementById('nav-add-village')) return;
+    const nav = document.querySelector('nav');
+    if (!nav) return;
+    const btn = document.createElement('button');
+    btn.id = 'nav-add-village';
+    btn.textContent = '+ Add Village';
+    btn.className = 'btn btn-small btn-primary';
+    btn.style.cssText = 'margin-left:8px;font-size:12px;padding:4px 10px;';
+    btn.onclick = function () { soth.showAddVillage(); };
+    // Insert before the logout button or at end
+    const logoutBtn = nav.querySelector('button[onclick*="signOut"]') || nav.querySelector('#nav-logout');
+    if (logoutBtn) {
+      nav.insertBefore(btn, logoutBtn);
+    } else {
+      nav.appendChild(btn);
+    }
+  };
+
+  // Try immediately and also on auth change
+  injectAddVillageBtn();
+  document.addEventListener('soth:authchange', injectAddVillageBtn);
 });
 
 // Retry init when Supabase SDK is ready (in case it loaded after DOMContentLoaded)
