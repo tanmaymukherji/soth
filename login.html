@@ -4,25 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login - SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260721p">
-<script src="config.js?v=20260721p"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260727b">
+<script src="config.js?v=20260727b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
-<script src="data/lgd.js?v=20260721p"></script>
-<script src="app/core.js?v=20260721p"></script>
+<script src="data/lgd.js?v=20260727b"></script>
+<script src="app/core.js?v=20260727b"></script>
 </head>
 <body>
 <div id="toast-container"></div>
 
 <header class="app-header">
   <div class="brand">Sense of <span>The House</span></div>
-  <nav><a href="index.html">< Back to Map</a></nav>
+  <nav><a href="index.html">Back to Map</a></nav>
 </header>
 
 <main class="auth-container">
   <div class="auth-card" id="auth-card">
-    <h2 id="auth-title">Sign In</h2>
-    <div id="auth-form">
+    <!-- Step 1: Email + Password -->
+    <div id="step-credentials">
+      <h2 id="auth-title">Sign In</h2>
       <div class="field-group">
         <label for="auth-email">Email</label>
         <input type="email" id="auth-email" placeholder="your@email.com" autocomplete="email">
@@ -36,17 +37,39 @@
         <input type="text" id="auth-name" placeholder="Your name" autocomplete="name">
       </div>
       <button class="btn btn-primary" style="width:100%;" id="auth-action-btn">Sign In</button>
+      <div class="form-footer" id="auth-footer">
+        <a href="#" id="auth-toggle" onclick="toggleMode()">Create an account</a>
+        <span style="margin:0 8px">.</span>
+        <a href="#" onclick="forgotPassword()">Forgot password?</a>
+      </div>
     </div>
-    <div class="form-footer" id="auth-footer">
-      <a href="#" id="auth-toggle" onclick="toggleMode()">Create an account</a>
-      <span style="margin:0 8px">.</span>
-      <a href="#" onclick="forgotPassword()">Forgot password?</a>
+
+    <!-- Step 2: OTP Verification -->
+    <div id="step-otp" style="display:none;">
+      <h2>Verify Email</h2>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">
+        We sent a 6-digit code to <strong id="otp-email-display"></strong>. Enter it below.
+      </p>
+      <div class="field-group">
+        <label for="otp-token">Verification Code</label>
+        <input type="text" id="otp-token" placeholder="000000" maxlength="6" autocomplete="one-time-code"
+          style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;">
+      </div>
+      <button class="btn btn-primary" style="width:100%;" id="otp-verify-btn">Verify & Sign In</button>
+      <div class="form-footer">
+        <a href="#" onclick="backToLogin()">Back to Sign In</a>
+        <span style="margin:0 8px">.</span>
+        <a href="#" id="otp-resend" onclick="resendOtp()">Resend Code</a>
+      </div>
     </div>
   </div>
 </main>
 
 <script>
 let mode = 'login';
+let otpEmail = '';
+let otpPassword = '';
+let otpFullName = '';
 
 function toggleMode() {
   mode = mode === 'login' ? 'signup' : 'login';
@@ -57,6 +80,29 @@ function toggleMode() {
   document.getElementById('auth-footer').querySelector('a:last-child').style.display = mode === 'login' ? '' : 'none';
 }
 
+function showOtpStep() {
+  document.getElementById('step-credentials').style.display = 'none';
+  document.getElementById('step-otp').style.display = '';
+  document.getElementById('otp-email-display').textContent = otpEmail;
+  document.getElementById('otp-token').value = '';
+  document.getElementById('otp-token').focus();
+}
+
+function backToLogin() {
+  document.getElementById('step-credentials').style.display = '';
+  document.getElementById('step-otp').style.display = 'none';
+}
+
+async function resendOtp() {
+  const { error } = await soth.auth.signUp(otpEmail, otpPassword, otpFullName);
+  if (error) {
+    soth.ui.showToast(error.message, 'error');
+  } else {
+    soth.ui.showToast('New code sent!', 'success');
+  }
+}
+
+// Sign In / Sign Up
 document.getElementById('auth-action-btn').addEventListener('click', async function () {
   const email = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
@@ -83,13 +129,42 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
       soth.ui.showToast('Password must be at least 6 characters', 'error');
       return;
     }
-    const { error } = await soth.auth.signUp(email, password, name);
+    otpEmail = email;
+    otpPassword = password;
+    otpFullName = name;
+    const { data, error } = await soth.auth.signUp(email, password, name);
     if (error) {
       soth.ui.showToast(error.message, 'error');
     } else {
-      soth.ui.showToast('Account created! Check your email for confirmation link.', 'success');
+      showOtpStep();
+      soth.ui.showToast('Code sent to your email!', 'success');
     }
   }
+});
+
+// OTP Verify
+document.getElementById('otp-verify-btn').addEventListener('click', async function () {
+  const token = document.getElementById('otp-token').value.trim();
+  if (!token || token.length !== 6) {
+    soth.ui.showToast('Enter the 6-digit code', 'error');
+    return;
+  }
+  const { data, error } = await soth.auth.verifyOtp(otpEmail, token);
+  if (error) {
+    soth.ui.showToast(error.message, 'error');
+  } else {
+    soth.ui.showToast('Verified! Signing in...', 'success');
+    const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+    const isAdmin = soth.currentProfile?.role === 'soth_admin';
+    if (redirect) window.location.href = redirect;
+    else if (isAdmin) window.location.href = 'admin.html';
+    else window.location.href = 'dashboard.html';
+  }
+});
+
+// Allow Enter key on OTP input
+document.getElementById('otp-token').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') document.getElementById('otp-verify-btn').click();
 });
 
 async function forgotPassword() {

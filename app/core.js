@@ -96,6 +96,18 @@ soth.auth = {
     return { data };
   },
 
+  verifyOtp: async function (email, token) {
+    const sb = soth.sb();
+    const { data, error } = await sb.auth.verifyOtp({
+      email, token, type: 'signup'
+    });
+    if (error) return { error };
+    // After OTP verification, sign in automatically
+    soth.currentUser = data.user;
+    await soth.auth.loadProfile();
+    return { data };
+  },
+
   signIn: async function (email, password) {
     try {
       const sb = soth.sb();
