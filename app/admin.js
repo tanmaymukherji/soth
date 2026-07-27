@@ -779,7 +779,7 @@ soth.admin = {
     const { data: user } = await sb.from('local_users').select('role').eq('id', userId).single();
     const modal = document.getElementById('admin-modal');
     const current = user?.role || 'partner';
-    const roles = ['partner', 'partner_admin', 'soth_admin'];
+    const roles = ['observer', 'partner', 'partner_admin', 'soth_admin'];
     modal.innerHTML = `
       <div class="modal-content">
         <h3>Change User Role</h3>
@@ -819,7 +819,7 @@ soth.admin = {
     let payload = {};
     if (setting === 'role') {
       const newRole = document.getElementById('new-role-select')?.value;
-      if (!newRole || !['partner', 'partner_admin', 'soth_admin'].includes(newRole)) return;
+      if (!newRole || !['observer', 'partner', 'partner_admin', 'soth_admin'].includes(newRole)) return;
       payload = { user_id: userId, role: newRole };
     } else if (setting === 'org') {
       const orgId = document.getElementById('assign-org-select')?.value || null;
@@ -833,7 +833,7 @@ soth.admin = {
   },
 
   approveUser: async function (userId) {
-    const result = await soth.auth.updateProfile({ user_id: userId, role: 'partner', status: 'active' });
+    const result = await soth.auth.updateProfile({ user_id: userId, role: 'observer', status: 'active' });
     if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('User approved', 'success');
     soth.admin.showSection('users');

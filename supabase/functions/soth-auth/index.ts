@@ -78,7 +78,7 @@ async function handleSignup({ email, password, full_name }) {
     email: normalizedEmail,
     password_hash: passwordHash,
     full_name: full_name || '',
-    role: normalizedEmail === (Deno.env.get('BOOTSTRAP_ADMIN_EMAIL') || '').toLowerCase() ? 'soth_admin' : 'partner',
+    role: normalizedEmail === (Deno.env.get('BOOTSTRAP_ADMIN_EMAIL') || '').toLowerCase() ? 'soth_admin' : 'observer',
     status: 'pending',
   }).select('id, email, full_name, role, status, org_id, created_at').single();
 
