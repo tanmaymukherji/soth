@@ -94,12 +94,11 @@ soth.auth = {
       }
     });
     if (error) return { error };
+    // Always create profile after signup
+    await soth.auth.ensureProfile(data.user, fullName);
     // Auto-confirm is enabled in Supabase dashboard, so sign in immediately
     const signInResult = await soth.auth.signIn(email, password);
     if (signInResult.error) {
-      // If sign-in fails (e.g. email not confirmed), return signup data anyway
-      // Admin can manually confirm or the user can wait
-      await soth.auth.ensureProfile(data.user, fullName);
       return { data };
     }
     return { data: signInResult.data };
@@ -112,6 +111,8 @@ soth.auth = {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error) return { error };
       soth.currentUser = data.user;
+      // Ensure profile exists (creates if missing)
+      await soth.auth.ensureProfile(data.user, data.user?.user_metadata?.full_name);
       await soth.auth.loadProfile();
       return { data };
     } catch (e) {
