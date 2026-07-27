@@ -158,7 +158,10 @@ soth.auth = {
         body: JSON.stringify({ action: 'updateUser', ...updates })
       });
       const result = await res.json();
-      if (result.user) soth.auth._saveSession(result.user);
+      // Only update local session if the returned user matches the current user
+      if (result.user && result.user.id === soth.currentUser?.id) {
+        soth.auth._saveSession(result.user);
+      }
       return result;
     } catch (e) {
       return { error: 'Auth service unreachable' };
@@ -169,7 +172,8 @@ soth.auth = {
     const stored = localStorage.getItem(soth.auth.USER_KEY);
     const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
-    if (!cfg.AUTH_API_URL) return { users: [] };
+    if (!cfg.AUTH_API_URL) return [];
+    if (!adminToken) return [];
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
@@ -177,8 +181,13 @@ soth.auth = {
         body: JSON.stringify({ action: 'listUsers' })
       });
       const result = await res.json();
+      if (result.error) {
+        console.error('listUsers error:', result.error);
+        return [];
+      }
       return result.users || [];
     } catch (e) {
+      console.error('listUsers fetch error:', e);
       return [];
     }
   },
