@@ -7,4 +7,5 @@ window.APP_CONFIG = {
   MAPPLS_GEOCODE_URL: 'https://atlas.mappls.com/api/places/search/json',
   DEFAULT_MAP_CENTER: { lat: 22.9734, lng: 78.6569 },
   DEFAULT_MAP_ZOOM: 5,
+  AUTH_API_URL: 'https://zphabezqbboaexmmhcic.supabase.co/functions/v1/soth-auth',
 };

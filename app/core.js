@@ -24,136 +24,146 @@ soth.initSupabase = function () {
 
 soth.sb = () => soth._sb || soth.initSupabase();
 
-// --- Auth ---
+// --- Custom Auth (via Edge Function, independent of Supabase Auth) ---
 
 soth.currentUser = null;
 soth.currentProfile = null;
 
-soth.auth = {
-  _initCount: 0,
+soth._authCall = async function (payload) {
+  const cfg = soth.config();
+  if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
+  try {
+    const res = await fetch(cfg.AUTH_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch (e) {
+    console.error('SoTH auth call error:', e);
+    return { error: 'Auth service unreachable' };
+  }
+};
 
-  init: async function () {
-    soth.auth._initCount++;
-    const attempt = soth.auth._initCount;
-    try {
-      const sb = soth.sb();
-      if (!sb) {
-        console.warn('SoTH: auth.init() #' + attempt + ' - no Supabase client');
-        return null;
-      }
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user) {
-        soth.currentUser = session.user;
-        console.log('SoTH: session found for', session.user.email);
-        await soth.auth.loadProfile();
-      } else {
-        console.log('SoTH: no session found');
-      }
-      sb.auth.onAuthStateChange(async (event, session) => {
-        console.log('SoTH: auth event', event, session?.user?.email);
-        if (session?.user) {
-          soth.currentUser = session.user;
-          await soth.auth.loadProfile();
-        } else {
-          soth.currentUser = null;
-          soth.currentProfile = null;
-        }
-        document.dispatchEvent(new CustomEvent('soth:authchange', {
-          detail: { user: soth.currentUser, profile: soth.currentProfile }
-        }));
-      });
-      return session;
-    } catch (e) {
-      console.error('SoTH: auth.init() #' + attempt + ' error:', e);
-      return null;
-    }
+soth.auth = {
+  USER_KEY: 'soth_user',
+
+  _saveSession: function (user) {
+    try { localStorage.setItem(soth.auth.USER_KEY, JSON.stringify(user)); } catch {}
+    soth.currentUser = { id: user.id, email: user.email };
+    soth.currentProfile = user;
   },
 
-  loadProfile: async function () {
+  _clearSession: function () {
+    try { localStorage.removeItem(soth.auth.USER_KEY); } catch {}
+    soth.currentUser = null;
+    soth.currentProfile = null;
+  },
+
+  _dispatchChange: function () {
+    document.dispatchEvent(new CustomEvent('soth:authchange', {
+      detail: { user: soth.currentUser, profile: soth.currentProfile }
+    }));
+  },
+
+  init: async function () {
     try {
-      if (!soth.currentUser) return null;
-      const sb = soth.sb();
-      if (!sb) return null;
-      const { data } = await sb.from('profiles').select('*').eq('id', soth.currentUser.id).maybeSingle();
-      soth.currentProfile = data || null;
-      console.log('SoTH: profile loaded', soth.currentProfile?.role || 'none');
-      return data;
+      const stored = localStorage.getItem(soth.auth.USER_KEY);
+      if (stored) {
+        const user = JSON.parse(stored);
+        soth.currentUser = { id: user.id, email: user.email };
+        soth.currentProfile = user;
+        console.log('SoTH: auth session restored for', user.email);
+      } else {
+        console.log('SoTH: no stored session');
+      }
+      return soth.currentUser;
     } catch (e) {
-      console.error('SoTH: loadProfile error:', e);
+      console.error('SoTH: auth.init error:', e);
       return null;
     }
   },
 
   signUp: async function (email, password, fullName) {
-    const sb = soth.sb();
-    const { data, error } = await sb.auth.signUp({
-      email, password,
-      options: {
-        data: { full_name: fullName },
-        emailRedirectTo: window.location.origin + '/login.html'
-      }
-    });
-    if (error) return { error };
-    // Profile will be created when user clicks the confirmation link (handled in login.html)
-    return { data };
+    if (!fullName) return { error: 'Full name is required' };
+    const result = await soth._authCall({ action: 'signup', email, password, full_name: fullName });
+    if (result.error) return { error: result.error };
+    return { data: result.user };
   },
 
   signIn: async function (email, password) {
-    try {
-      const sb = soth.sb();
-      if (!sb) return { error: new Error('Supabase not configured') };
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) return { error };
-      soth.currentUser = data.user;
-      // Ensure profile exists (creates if missing)
-      await soth.auth.ensureProfile(data.user, data.user?.user_metadata?.full_name);
-      await soth.auth.loadProfile();
-      return { data };
-    } catch (e) {
-      console.error('SoTH: signIn error:', e);
-      return { error: e };
-    }
+    const result = await soth._authCall({ action: 'login', email, password });
+    if (result.error) return { error: result.error };
+    if (result.user.status === 'pending') return { error: 'Account pending admin approval' };
+    if (result.user.status === 'inactive') return { error: 'Account is deactivated' };
+    soth.auth._saveSession(result.user);
+    soth.auth._dispatchChange();
+    return { data: result.user };
   },
 
   signOut: async function () {
-    try {
-      const sb = soth.sb();
-      if (sb) await sb.auth.signOut();
-    } catch (e) { console.warn('SoTH: signOut error:', e); }
-    soth.currentUser = null;
-    soth.currentProfile = null;
+    soth.auth._clearSession();
+    soth.auth._dispatchChange();
   },
 
-  ensureProfile: async function (user, fullName) {
+  changePassword: async function (oldPassword, newPassword) {
+    const userId = soth.currentUser?.id;
+    if (!userId) return { error: 'Not logged in' };
+    return await soth._authCall({ action: 'changePassword', user_id: userId, old_password: oldPassword, new_password: newPassword });
+  },
+
+  adminResetPassword: async function (userId, newPassword) {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
     try {
-      const sb = soth.sb();
-      if (!sb) return null;
-      const { data: existing } = await sb.from('profiles').select('id').eq('id', user.id).maybeSingle();
-      if (!existing) {
-        await sb.from('profiles').upsert({
-          id: user.id,
-          email: user.email || '',
-          full_name: fullName || user.user_metadata?.full_name || '',
-          role: user.email === (soth.config().BOOTSTRAP_ADMIN_EMAIL || '') ? 'soth_admin' : 'partner',
-          status: user.email === (soth.config().BOOTSTRAP_ADMIN_EMAIL || '') ? 'active' : 'pending',
-        }, { onConflict: 'id' });
-      }
-      await soth.auth.loadProfile();
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action: 'adminResetPassword', user_id: userId, new_password: newPassword })
+      });
+      return await res.json();
     } catch (e) {
-      console.error('SoTH: ensureProfile error:', e);
+      return { error: 'Auth service unreachable' };
     }
   },
 
-  sendPasswordReset: async function (email) {
-    const sb = soth.sb();
-    return sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/login.html'
-    });
+  updateProfile: async function (updates) {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action: 'updateUser', ...updates })
+      });
+      const result = await res.json();
+      if (result.user) soth.auth._saveSession(result.user);
+      return result;
+    } catch (e) {
+      return { error: 'Auth service unreachable' };
+    }
   },
 
-  updatePassword: async function (newPassword) {
-    const sb = soth.sb();
-    return sb.auth.updateUser({ password: newPassword });
+  listUsers: async function () {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { users: [] };
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action: 'listUsers' })
+      });
+      const result = await res.json();
+      return result.users || [];
+    } catch (e) {
+      return [];
+    }
   },
 
   isAdmin: function () {
@@ -181,6 +191,8 @@ soth.auth = {
     return true;
   }
 };
+
+// --- Data helpers ---
 
 // --- Data helpers ---
 

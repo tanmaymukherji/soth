@@ -740,38 +740,44 @@ soth.admin = {
   },
 
   renderUsers: async function (container) {
+    const users = await soth.auth.listUsers();
     const sb = soth.sb();
-    const { data: users } = await sb.from('profiles').select('*, organizations(name)').limit(200);
     const { data: orgs } = await sb.from('organizations').select('id, name').eq('status', 'active');
 
     let html = '<div class="admin-section"><h2>Users</h2>';
-    html += '<p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">Users create their own accounts via the Login page. Admin can assign roles, orgs, and approve pending users.</p>';
+    html += '<p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">Users create their own accounts via the Login page. Admin can approve, assign orgs, roles, and reset passwords.</p>';
     html += '<table class="param-table"><thead><tr><th>Name</th><th>Email</th><th>Org</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
-    (users || []).forEach(u => {
-      html += `<tr>
-        <td>${soth.ui.escapeHtml(u.full_name || '')}</td>
-        <td>${soth.ui.escapeHtml(u.email || u.id.substring(0, 12))}</td>
-        <td>${soth.ui.escapeHtml(u.organizations?.name || u.org_id?.substring(0, 8) || '-')}</td>
-        <td><span class="status-badge">${u.role}</span></td>
-        <td><span class="status-badge status-${u.status}">${u.status}</span></td>
-        <td nowrap>
-          <button class="btn btn-small" onclick="soth.admin.changeUserRole('${u.id}')">Role</button>
-          <button class="btn btn-small btn-outline" onclick="soth.admin.changeUserOrg('${u.id}')">Org</button>
-          <button class="btn btn-small btn-outline" onclick="soth.admin.approveUser('${u.id}')">${u.status === 'pending' ? 'Approve' : ''}</button>
-        </td>
-      </tr>`;
-    });
+    if (!users || !users.length) {
+      html += '<tr><td colspan="6" class="empty-state">No users registered yet.</td></tr>';
+    } else {
+      (users || []).forEach(u => {
+        const org = orgs?.find(o => o.id === u.org_id);
+        html += `<tr>
+          <td>${soth.ui.escapeHtml(u.full_name || '')}</td>
+          <td>${soth.ui.escapeHtml(u.email)}</td>
+          <td>${org ? soth.ui.escapeHtml(org.name) : '-'}</td>
+          <td><span class="status-badge">${u.role}</span></td>
+          <td><span class="status-badge status-${u.status}">${u.status}</span></td>
+          <td nowrap>
+            <button class="btn btn-small" onclick="soth.admin.changeUserRole('${u.id}')">Role</button>
+            <button class="btn btn-small btn-outline" onclick="soth.admin.changeUserOrg('${u.id}')">Org</button>
+            ${u.status === 'pending' ? `<button class="btn btn-small btn-outline" onclick="soth.admin.approveUser('${u.id}')">Approve</button>` : ''}
+            <button class="btn btn-small btn-outline" onclick="soth.admin.resetUserPassword('${u.id}','${soth.ui.escapeAttr(u.email)}')">Reset PW</button>
+          </td>
+        </tr>`;
+      });
+    }
     html += '</tbody></table>';
-    html += '<p style="font-size:12px;color:var(--gray-500);margin-top:8px;">Users sign up with status <strong>pending</strong>. Admin must approve and assign org for org-level data access.</p>';
+    html += '<p style="font-size:12px;color:var(--gray-500);margin-top:8px;">Users sign up with status <strong>pending</strong>. Admin must approve and assign org for data access.</p>';
     html += '</div>';
     container.innerHTML = html;
   },
 
   changeUserRole: async function (userId) {
     const sb = soth.sb();
-    const { data: profile } = await sb.from('profiles').select('role').eq('id', userId).single();
+    const { data: user } = await sb.from('local_users').select('role').eq('id', userId).single();
     const modal = document.getElementById('admin-modal');
-    const current = profile?.role || 'partner';
+    const current = user?.role || 'partner';
     const roles = ['partner', 'partner_admin', 'soth_admin'];
     modal.innerHTML = `
       <div class="modal-content">
@@ -781,21 +787,11 @@ soth.admin = {
           ${roles.map(r => `<option value="${r}" ${r === current ? 'selected' : ''}>${r}</option>`).join('')}
         </select>
         <div class="form-actions">
-          <button class="btn btn-primary" onclick="soth.admin.doChangeRole('${userId}')">Save</button>
+          <button class="btn btn-primary" onclick="soth.admin.doChangeUserSetting('${userId}','role')">Save</button>
           <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
         </div>
       </div>`;
     modal.classList.remove('hidden');
-  },
-
-  doChangeRole: async function (userId) {
-    const newRole = document.getElementById('new-role-select')?.value;
-    if (!newRole || !['partner', 'partner_admin', 'soth_admin'].includes(newRole)) return;
-    const sb = soth.sb();
-    await sb.from('profiles').update({ role: newRole }).eq('id', userId);
-    soth.ui.showToast('Role updated', 'success');
-    document.getElementById('admin-modal').classList.add('hidden');
-    soth.admin.showSection('users');
   },
 
   changeUserOrg: async function (userId) {
@@ -806,29 +802,65 @@ soth.admin = {
     modal.innerHTML = `
       <div class="modal-content">
         <h3>Assign Organisation</h3>
-        <select id="assign-org-select">${opts}</select>
+        <select id="assign-org-select">
+          <option value="">-- None --</option>
+          ${opts}
+        </select>
         <div class="form-actions">
-          <button class="btn btn-primary" onclick="soth.admin.doAssignOrg('${userId}')">Assign</button>
+          <button class="btn btn-primary" onclick="soth.admin.doChangeUserSetting('${userId}','org')">Assign</button>
           <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
         </div>
       </div>`;
     modal.classList.remove('hidden');
   },
 
-  doAssignOrg: async function (userId) {
-    const orgId = document.getElementById('assign-org-select')?.value;
-    if (!orgId) return;
-    const sb = soth.sb();
-    await sb.from('profiles').update({ org_id: orgId }).eq('id', userId);
-    soth.ui.showToast('Org assigned', 'success');
+  doChangeUserSetting: async function (userId, setting) {
+    let payload = {};
+    if (setting === 'role') {
+      const newRole = document.getElementById('new-role-select')?.value;
+      if (!newRole || !['partner', 'partner_admin', 'soth_admin'].includes(newRole)) return;
+      payload = { user_id: userId, role: newRole };
+    } else if (setting === 'org') {
+      const orgId = document.getElementById('assign-org-select')?.value || null;
+      payload = { user_id: userId, org_id: orgId };
+    }
+    const result = await soth.auth.updateProfile(payload);
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+    soth.ui.showToast('Saved', 'success');
     document.getElementById('admin-modal').classList.add('hidden');
     soth.admin.showSection('users');
   },
 
   approveUser: async function (userId) {
-    const sb = soth.sb();
-    await sb.from('profiles').update({ status: 'active' }).eq('id', userId);
+    const result = await soth.auth.updateProfile({ user_id: userId, role: 'partner', status: 'active' });
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('User approved', 'success');
+    soth.admin.showSection('users');
+  },
+
+  resetUserPassword: async function (userId, email) {
+    const modal = document.getElementById('admin-modal');
+    if (!modal) return;
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h3>Reset Password for ${soth.ui.escapeHtml(email)}</h3>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">Enter a new password for this user. They will use this to login next time.</p>
+        <label>New Password<input type="password" id="reset-pw-input" placeholder="6+ characters" minlength="6"></label>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="soth.admin.doResetPassword('${userId}')">Reset Password</button>
+          <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </div>`;
+    modal.classList.remove('hidden');
+  },
+
+  doResetPassword: async function (userId) {
+    const newPw = document.getElementById('reset-pw-input')?.value;
+    if (!newPw || newPw.length < 6) { soth.ui.showToast('Password must be 6+ characters', 'error'); return; }
+    const result = await soth.auth.adminResetPassword(userId, newPw);
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+    soth.ui.showToast('Password reset successfully', 'success');
+    document.getElementById('admin-modal').classList.add('hidden');
     soth.admin.showSection('users');
   },
 
