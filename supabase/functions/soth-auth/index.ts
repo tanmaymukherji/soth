@@ -64,26 +64,43 @@ function getAuthUserId(req) {
 
 // ─── Helper: ensure Supabase Auth user exists and return session tokens ───
 async function ensureAuthSession(localUser, password) {
-  // First try to sign in directly — works if user already exists in auth.users
+  // First try to sign in directly — works if user exists with same password
   let signInResult = await sb.auth.signInWithPassword({
     email: localUser.email,
     password: password,
   }).catch(() => null);
 
-  // If sign-in fails, create the auth user
+  // If sign-in fails, either the user doesn't exist or password is different
   if (!signInResult?.data?.session) {
-    if (!localUser?.auth_id) {
+    // Try to find the existing auth user by looking them up
+    let authUserId = null;
+    try {
+      // Use admin API to list users and find by email
+      const { data: usersData } = await sb.auth.admin.listUsers();
+      const existing = usersData?.users?.find((u: any) => u.email === localUser.email);
+      if (existing) {
+        authUserId = existing.id;
+        // Update the existing user's password to match
+        await sb.auth.admin.updateUserById(authUserId, { password: password });
+      }
+    } catch (_) {}
+
+    if (!authUserId) {
+      // No existing auth user — create one
       const { data: authUser } = await sb.auth.admin.createUser({
         email: localUser.email,
         password: password,
         email_confirm: true,
       }).catch(() => ({ data: null }));
-      if (authUser?.user) {
-        await sb.from('local_users').update({ auth_id: authUser.user.id }).eq('id', localUser.id);
-        localUser.auth_id = authUser.user.id;
-      }
+      if (authUser?.user) authUserId = authUser.user.id;
     }
-    // Retry sign-in after user creation
+
+    if (authUserId) {
+      await sb.from('local_users').update({ auth_id: authUserId }).eq('id', localUser.id);
+      localUser.auth_id = authUserId;
+    }
+
+    // Retry sign-in
     signInResult = await sb.auth.signInWithPassword({
       email: localUser.email,
       password: password,
