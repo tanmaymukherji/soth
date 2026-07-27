@@ -48,13 +48,20 @@
     <div id="step-otp" style="display:none;">
       <h2>Verify Email</h2>
       <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">
-        We sent a verification link to <strong id="otp-email-display"></strong>.<br>
-        Click the link in the email to verify your account and sign in automatically.
+        We sent a 6-digit code to <strong id="otp-email-display"></strong>.<br>
+        Check your inbox (and spam folder). Enter the code below.
       </p>
-      <p style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">
-        Check your inbox (and spam folder). The link will open this page and log you in.
-      </p>
-      <button class="btn btn-outline" style="width:100%;" onclick="backToLogin()">Back to Sign In</button>
+      <div class="field-group">
+        <label for="otp-token">Verification Code</label>
+        <input type="text" id="otp-token" placeholder="000000" maxlength="6" autocomplete="one-time-code"
+          style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;">
+      </div>
+      <button class="btn btn-primary" style="width:100%;" id="otp-verify-btn">Verify & Sign In</button>
+      <div class="form-footer">
+        <a href="#" onclick="backToLogin()">Back to Sign In</a>
+        <span style="margin:0 8px">.</span>
+        <a href="#" id="otp-resend" onclick="resendOtp()">Resend Code</a>
+      </div>
     </div>
   </div>
 </main>
@@ -88,11 +95,11 @@ function backToLogin() {
 }
 
 async function resendOtp() {
-  const { error } = await soth.auth.signUp(otpEmail, otpPassword, otpFullName);
+  const { error } = await soth.auth.sendOtp(otpEmail);
   if (error) {
     soth.ui.showToast(error.message, 'error');
   } else {
-    soth.ui.showToast('New verification link sent!', 'success');
+    soth.ui.showToast('New code sent!', 'success');
   }
 }
 
@@ -126,14 +133,46 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
     otpEmail = email;
     otpPassword = password;
     otpFullName = name;
-    const { data, error } = await soth.auth.signUp(email, password, name);
-    if (error) {
-      soth.ui.showToast(error.message, 'error');
+    // Create account first
+    const { error: signUpError } = await soth.auth.signUp(email, password, name);
+    if (signUpError && !signUpError.message?.includes('already registered')) {
+      soth.ui.showToast(signUpError.message, 'error');
+      return;
+    }
+    // Send OTP via signInWithOtp (independent of signup confirmation)
+    const { error: otpError } = await soth.auth.sendOtp(email);
+    if (otpError) {
+      soth.ui.showToast(otpError.message, 'error');
     } else {
       showOtpStep();
-      soth.ui.showToast('Verification link sent! Check your email.', 'success');
+      soth.ui.showToast('Code sent to your email!', 'success');
     }
   }
+});
+
+// OTP Verify
+document.getElementById('otp-verify-btn').addEventListener('click', async function () {
+  const token = document.getElementById('otp-token').value.trim();
+  if (!token || token.length !== 6) {
+    soth.ui.showToast('Enter the 6-digit code', 'error');
+    return;
+  }
+  const { data, error } = await soth.auth.verifyOtp(otpEmail, token);
+  if (error) {
+    soth.ui.showToast(error.message, 'error');
+  } else {
+    soth.ui.showToast('Verified! Signing in...', 'success');
+    const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+    const isAdmin = soth.currentProfile?.role === 'soth_admin';
+    if (redirect) window.location.href = redirect;
+    else if (isAdmin) window.location.href = 'admin.html';
+    else window.location.href = 'dashboard.html';
+  }
+});
+
+// Allow Enter key on OTP input
+document.getElementById('otp-token').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') document.getElementById('otp-verify-btn').click();
 });
 
 async function forgotPassword() {
