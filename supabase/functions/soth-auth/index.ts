@@ -64,33 +64,48 @@ function getAuthUserId(req) {
 
 // ─── Helper: ensure Supabase Auth user exists and return session tokens ───
 async function ensureAuthSession(localUser, password) {
-  if (!localUser?.auth_id) {
-    // Create Supabase Auth user with same password
-    const { data: authUser, error: createError } = await sb.auth.admin.createUser({
-      email: localUser.email,
-      password: password,
-      email_confirm: true,
-    });
-    if (createError || !authUser?.user) {
-      console.error('Failed to create auth user:', createError);
-      return null;
-    }
-    // Link auth_id to local_users
-    await sb.from('local_users').update({ auth_id: authUser.user.id }).eq('id', localUser.id);
-    localUser.auth_id = authUser.user.id;
-  }
-  // Sign in to get session tokens
-  const { data: signInData, error: signInError } = await sb.auth.signInWithPassword({
+  // First try to sign in directly — works if user already exists in auth.users
+  let signInResult = await sb.auth.signInWithPassword({
     email: localUser.email,
     password: password,
-  });
-  if (signInError || !signInData?.session) {
-    console.error('Failed to sign in auth user:', signInError);
+  }).catch(() => null);
+
+  // If sign-in fails, create the auth user
+  if (!signInResult?.data?.session) {
+    if (!localUser?.auth_id) {
+      const { data: authUser } = await sb.auth.admin.createUser({
+        email: localUser.email,
+        password: password,
+        email_confirm: true,
+      }).catch(() => ({ data: null }));
+      if (authUser?.user) {
+        await sb.from('local_users').update({ auth_id: authUser.user.id }).eq('id', localUser.id);
+        localUser.auth_id = authUser.user.id;
+      }
+    }
+    // Retry sign-in after user creation
+    signInResult = await sb.auth.signInWithPassword({
+      email: localUser.email,
+      password: password,
+    }).catch(() => null);
+  } else {
+    // Sign-in succeeded — link auth_id if not yet set
+    if (!localUser?.auth_id) {
+      const authUserId = signInResult.data.user?.id;
+      if (authUserId) {
+        await sb.from('local_users').update({ auth_id: authUserId }).eq('id', localUser.id);
+        localUser.auth_id = authUserId;
+      }
+    }
+  }
+
+  if (!signInResult?.data?.session) {
+    console.error('Failed to get Supabase Auth session for', localUser.email);
     return null;
   }
   return {
-    access_token: signInData.session.access_token,
-    refresh_token: signInData.session.refresh_token,
+    access_token: signInResult.data.session.access_token,
+    refresh_token: signInResult.data.session.refresh_token,
   };
 }
 
