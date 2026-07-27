@@ -560,6 +560,16 @@ document.addEventListener('DOMContentLoaded', async function () {
   // Try immediately and also on auth change
   injectAddVillageBtn();
   document.addEventListener('soth:authchange', injectAddVillageBtn);
+
+  // Show Compare link only for admins
+  const injectCompareLink = function () {
+    const compareLink = document.getElementById('nav-compare');
+    if (compareLink) {
+      compareLink.style.display = soth.currentProfile?.role === 'soth_admin' ? '' : 'none';
+    }
+  };
+  injectCompareLink();
+  document.addEventListener('soth:authchange', injectCompareLink);
 });
 
 // Retry init when Supabase SDK is ready (in case it loaded after DOMContentLoaded)

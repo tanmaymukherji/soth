@@ -25,7 +25,7 @@
     <a href="index.html">Map</a>
     <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
     <a href="superset.html">Superset</a>
-    <a href="compare.html">Compare</a>
+    <a href="compare.html" id="nav-compare" style="display:none">Compare</a>
     <a href="admin.html" id="nav-admin" style="display:none">Admin</a>
     <span id="user-label" style="display:none;font-size:12px;color:var(--gray-500);"></span>
     <a href="login.html" id="nav-login">Login</a>
@@ -117,7 +117,10 @@ soth.renderMap = async function () {
   if (soth.map._boundariesPromise) await soth.map._boundariesPromise;
 
   // Load all orgs + pre-compute their maturities in parallel
-  const orgs = await soth.data.organizations();
+  // Only count partner orgs in stats (observers are excluded)
+  const allOrgs = await soth.data.organizations();
+  const partnerOrgs = allOrgs.filter(o => o.org_type !== 'observer');
+  const orgs = partnerOrgs;
   const filteredOrgs = orgFilter ? orgs.filter(o => o.id === orgFilter) : orgs;
   const maturities = await Promise.all(filteredOrgs.map(o => soth.maturity.compute(o.id)));
   const maturityByOrg = {};
@@ -174,14 +177,15 @@ soth.renderMap = async function () {
 };
 
 soth.renderStats = async function () {
-  const orgs = await soth.data.organizations();
+  const allOrgs = await soth.data.organizations();
+  const partnerOrgs = allOrgs.filter(o => o.org_type !== 'observer');
   const allParams = await soth.data.allSubParams();
   const { data: allVillages } = await soth.sb().from('villages').select('*').limit(1);
   const { count: vCount } = await soth.sb().from('villages').select('*', { count: 'exact', head: true });
 
   const ribbon = document.getElementById('stats-ribbon');
   ribbon.innerHTML = `
-    <div class="stat-card"><div class="stat-value">${orgs.length}</div><div class="stat-label">Partner Organisations</div></div>
+    <div class="stat-card"><div class="stat-value">${partnerOrgs.length}</div><div class="stat-label">Partner Organisations</div></div>
     <div class="stat-card"><div class="stat-value">${allParams.length}</div><div class="stat-label">Sub-Parameters (Superset)</div></div>
       <div class="stat-card"><div class="stat-value">${vCount || 0}</div><div class="stat-label">Villages</div></div>
     <div class="stat-card"><div class="stat-value">${new Set(allParams.map(p => p.theme_id)).size}</div><div class="stat-label">Thematic Areas</div></div>
@@ -200,10 +204,11 @@ soth.renderMaturityCharts = async function () {
     const container = document.getElementById('maturity-charts');
     const countLabel = document.getElementById('maturity-count');
 
-    // Admin sees all orgs, partner sees only their org
+    // Admin sees all partner orgs, partner sees only their org
+    const partnerOrgs = orgs.filter(o => o.org_type !== 'observer');
     const orgsToShow = profile.role === 'soth_admin'
-      ? orgs
-      : orgs.filter(o => o.id === profile.org_id);
+      ? partnerOrgs
+      : partnerOrgs.filter(o => o.id === profile.org_id);
 
     let totalScores = 0;
     let scored = 0;
@@ -302,9 +307,10 @@ document.addEventListener('DOMContentLoaded', function () {
       themeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
     });
 
-    const orgs = await soth.data.organizations();
+    const allOrgsList = await soth.data.organizations();
+    const partnerOrgsList = allOrgsList.filter(o => o.org_type !== 'observer');
     const orgSelect = document.getElementById('map-org-filter');
-    orgs.forEach(o => {
+    partnerOrgsList.forEach(o => {
       orgSelect.innerHTML += `<option value="${o.id}">${o.name}</option>`;
     });
 

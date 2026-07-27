@@ -57,12 +57,13 @@ soth.admin = {
 
     let html = '<div class="admin-section"><h2>Organisations</h2>';
     html += `<button class="btn btn-primary" onclick="soth.admin.showOrgForm()">+ Add Organisation</button>`;
-    html += '<table class="param-table"><thead><tr><th>Name</th><th>Slug</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+    html += '<table class="param-table"><thead><tr><th>Name</th><th>Slug</th><th>Email</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
     (orgs || []).forEach(o => {
       html += `<tr>
         <td><strong>${soth.ui.escapeHtml(o.name)}</strong></td>
         <td>${soth.ui.escapeHtml(o.slug)}</td>
         <td>${soth.ui.escapeHtml(o.contact_email)}</td>
+        <td><span class="status-badge status-${o.org_type === 'partner' ? 'active' : 'pending'}">${o.org_type || 'partner'}</span></td>
         <td><span class="status-badge status-${o.status}">${o.status}</span></td>
         <td><button class="btn btn-small" onclick="soth.admin.showOrgForm('${o.id}')">Edit</button>
             <button class="btn btn-small btn-outline" onclick="soth.admin.toggleOrgStatus('${o.id}','${o.status}')">
@@ -90,6 +91,12 @@ soth.admin = {
           <label>Name *<input type="text" id="org-name" value="${soth.ui.escapeHtml(org.name)}" required></label>
           <label>Slug *<input type="text" id="org-slug" value="${soth.ui.escapeHtml(org.slug)}" required></label>
           <label>Contact Email<input type="email" id="org-email" value="${soth.ui.escapeHtml(org.contact_email)}"></label>
+          <label>Org Type
+            <select id="org-type">
+              <option value="partner"${org.org_type === 'partner' ? ' selected' : ''}>Partner (counted in stats)</option>
+              <option value="observer"${org.org_type === 'observer' ? ' selected' : ''}>Observer (not counted in stats)</option>
+            </select>
+          </label>
           ${orgId ? `<input type="hidden" id="org-id" value="${orgId}">` : ''}
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save</button>
@@ -104,7 +111,8 @@ soth.admin = {
       const payload = {
         name: document.getElementById('org-name').value.trim(),
         slug: document.getElementById('org-slug').value.trim(),
-        contact_email: document.getElementById('org-email').value.trim()
+        contact_email: document.getElementById('org-email').value.trim(),
+        org_type: document.getElementById('org-type').value
       };
       let error;
       if (orgId) {
