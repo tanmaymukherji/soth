@@ -62,6 +62,38 @@ function getAuthUserId(req) {
   return auth.slice(7);
 }
 
+// ─── Helper: ensure Supabase Auth user exists and return session tokens ───
+async function ensureAuthSession(localUser, password) {
+  if (!localUser?.auth_id) {
+    // Create Supabase Auth user with same password
+    const { data: authUser, error: createError } = await sb.auth.admin.createUser({
+      email: localUser.email,
+      password: password,
+      email_confirm: true,
+    });
+    if (createError || !authUser?.user) {
+      console.error('Failed to create auth user:', createError);
+      return null;
+    }
+    // Link auth_id to local_users
+    await sb.from('local_users').update({ auth_id: authUser.user.id }).eq('id', localUser.id);
+    localUser.auth_id = authUser.user.id;
+  }
+  // Sign in to get session tokens
+  const { data: signInData, error: signInError } = await sb.auth.signInWithPassword({
+    email: localUser.email,
+    password: password,
+  });
+  if (signInError || !signInData?.session) {
+    console.error('Failed to sign in auth user:', signInError);
+    return null;
+  }
+  return {
+    access_token: signInData.session.access_token,
+    refresh_token: signInData.session.refresh_token,
+  };
+}
+
 // ─── Signup — creates a new user ───
 async function handleSignup({ email, password, full_name }) {
   if (!email || !password) return json({ error: 'Email and password required' }, 400);
@@ -83,6 +115,21 @@ async function handleSignup({ email, password, full_name }) {
   }).select('id, email, full_name, role, status, org_id, created_at').single();
 
   if (error) return json({ error: error.message }, 500);
+
+  // Create Supabase Auth user for RLS compatibility
+  try {
+    const { data: authUser } = await sb.auth.admin.createUser({
+      email: normalizedEmail,
+      password: password,
+      email_confirm: true,
+    });
+    if (authUser?.user) {
+      await sb.from('local_users').update({ auth_id: authUser.user.id }).eq('id', user.id);
+    }
+  } catch (e) {
+    console.error('Failed to create auth user during signup:', e);
+  }
+
   return json({ user });
 }
 
@@ -99,9 +146,12 @@ async function handleLogin({ email, password }) {
 
   if (user.status === 'inactive') return json({ error: 'Account is deactivated. Contact admin.' }, 403);
 
-  // Return user without password_hash
+  // Create Supabase Auth session for RLS compatibility
+  const session = await ensureAuthSession(user, password);
+
+  // Return user without password_hash + auth session tokens
   const { password_hash, ...safeUser } = user;
-  return json({ user: safeUser });
+  return json({ user: safeUser, session });
 }
 
 // ─── Change Password — requires old password ───

@@ -97,11 +97,25 @@ soth.auth = {
     if (result.user.status === 'pending') return { error: 'Account pending admin approval' };
     if (result.user.status === 'inactive') return { error: 'Account is deactivated' };
     soth.auth._saveSession(result.user);
+    // Set Supabase Auth session for RLS compatibility
+    if (result.session?.access_token && result.session?.refresh_token) {
+      try {
+        const sb = soth.sb();
+        if (sb) await sb.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token,
+        });
+      } catch (e) { console.warn('Could not set Supabase session:', e); }
+    }
     soth.auth._dispatchChange();
     return { data: result.user };
   },
 
   signOut: async function () {
+    try {
+      const sb = soth.sb();
+      if (sb) await sb.auth.signOut();
+    } catch (e) { console.warn('signOut error:', e); }
     soth.auth._clearSession();
     soth.auth._dispatchChange();
   },
