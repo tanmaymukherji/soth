@@ -88,7 +88,10 @@ soth.auth = {
     const sb = soth.sb();
     const { data, error } = await sb.auth.signUp({
       email, password,
-      options: { data: { full_name: fullName } }
+      options: {
+        data: { full_name: fullName },
+        emailRedirectTo: window.location.origin + '/login.html'
+      }
     });
     if (error) return { error };
     // Sign-in auto triggers creation of profile via trigger (use ensureProfile)
