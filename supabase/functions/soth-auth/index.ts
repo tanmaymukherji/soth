@@ -39,6 +39,8 @@ Deno.serve(async (req) => {
         return await handleListUsers(req);
       case 'updateUser':
         return await handleUpdateUser(payload, req);
+      case 'deleteUser':
+        return await handleDeleteUser(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -184,4 +186,19 @@ async function handleUpdateUser({ user_id, role, status, org_id }, req) {
   const { data, error } = await sb.from('local_users').update(updates).eq('id', user_id).select('id, email, full_name, role, status, org_id').single();
   if (error) return json({ error: error.message }, 500);
   return json({ user: data });
+}
+
+// ─── Delete User (admin only) — removes from local_users only, not affecting any data ───
+async function handleDeleteUser({ user_id }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can delete users' }, 403);
+  if (!user_id) return json({ error: 'user_id required' }, 400);
+  // Prevent admin from deleting themselves
+  if (user_id === adminId) return json({ error: 'Cannot delete your own account' }, 400);
+
+  const { error } = await sb.from('local_users').delete().eq('id', user_id);
+  if (error) return json({ error: error.message }, 500);
+  return json({ success: true });
 }

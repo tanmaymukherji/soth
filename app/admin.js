@@ -763,6 +763,7 @@ soth.admin = {
             <button class="btn btn-small btn-outline" onclick="soth.admin.changeUserOrg('${u.id}')">Org</button>
             ${u.status === 'pending' ? `<button class="btn btn-small btn-outline" onclick="soth.admin.approveUser('${u.id}')">Approve</button>` : ''}
             <button class="btn btn-small btn-outline" onclick="soth.admin.resetUserPassword('${u.id}','${soth.ui.escapeAttr(u.email)}')">Reset PW</button>
+            <button class="btn btn-small btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="soth.admin.deleteUser('${u.id}','${soth.ui.escapeAttr(u.email)}')">Delete</button>
           </td>
         </tr>`;
       });
@@ -860,6 +861,35 @@ soth.admin = {
     const result = await soth.auth.adminResetPassword(userId, newPw);
     if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('Password reset successfully', 'success');
+    document.getElementById('admin-modal').classList.add('hidden');
+    soth.admin.showSection('users');
+  },
+
+  deleteUser: async function (userId, email) {
+    const modal = document.getElementById('admin-modal');
+    if (!modal) return;
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:450px;">
+        <h3 style="color:var(--danger);">Delete User</h3>
+        <p style="font-size:13px;margin:12px 0;">
+          Are you sure you want to delete <strong>${soth.ui.escapeHtml(email)}</strong>?
+        </p>
+        <p style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">
+          This removes the user's login access. Any data (captures, proposals, etc.)
+          created by this user is NOT affected.
+        </p>
+        <div class="form-actions">
+          <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);" onclick="soth.admin.doDeleteUser('${userId}')">Delete User</button>
+          <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </div>`;
+    modal.classList.remove('hidden');
+  },
+
+  doDeleteUser: async function (userId) {
+    const result = await soth.auth.deleteUser(userId);
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+    soth.ui.showToast('User deleted', 'success');
     document.getElementById('admin-modal').classList.add('hidden');
     soth.admin.showSection('users');
   },

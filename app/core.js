@@ -129,6 +129,23 @@ soth.auth = {
     }
   },
 
+  deleteUser: async function (userId) {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action: 'deleteUser', user_id: userId })
+      });
+      return await res.json();
+    } catch (e) {
+      return { error: 'Auth service unreachable' };
+    }
+  },
+
   updateProfile: async function (updates) {
     const stored = localStorage.getItem(soth.auth.USER_KEY);
     const adminToken = stored ? JSON.parse(stored).id : '';
@@ -397,6 +414,57 @@ soth.ui = {
   }
 };
 
+// --- Change Password Modal (available on all pages) ---
+
+soth.showChangePasswordModal = function () {
+  if (!soth.currentUser) { soth.ui.showToast('Not logged in', 'error'); return; }
+  // Ensure modal exists
+  let modal = document.getElementById('admin-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'admin-modal';
+    modal.className = 'modal-overlay hidden';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:400px;">
+      <h3>Change Password</h3>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">For: <strong>${soth.ui.escapeHtml(soth.currentUser.email)}</strong></p>
+      <div class="field-group">
+        <label for="cp-old-pw">Current Password</label>
+        <input type="password" id="cp-old-pw" placeholder="Enter current password">
+      </div>
+      <div class="field-group">
+        <label for="cp-new-pw">New Password</label>
+        <input type="password" id="cp-new-pw" placeholder="6+ characters" minlength="6">
+      </div>
+      <div class="field-group">
+        <label for="cp-confirm-pw">Confirm New Password</label>
+        <input type="password" id="cp-confirm-pw" placeholder="Re-enter new password">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="soth.doChangePassword()">Update Password</button>
+        <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+      </div>
+    </div>`;
+  modal.classList.remove('hidden');
+};
+
+soth.doChangePassword = async function () {
+  const oldPw = document.getElementById('cp-old-pw')?.value;
+  const newPw = document.getElementById('cp-new-pw')?.value;
+  const confirmPw = document.getElementById('cp-confirm-pw')?.value;
+
+  if (!oldPw || !newPw || !confirmPw) { soth.ui.showToast('All fields are required', 'error'); return; }
+  if (newPw.length < 6) { soth.ui.showToast('New password must be at least 6 characters', 'error'); return; }
+  if (newPw !== confirmPw) { soth.ui.showToast('New passwords do not match', 'error'); return; }
+
+  const result = await soth.auth.changePassword(oldPw, newPw);
+  if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+  soth.ui.showToast('Password changed successfully!', 'success');
+  document.getElementById('admin-modal').classList.add('hidden');
+};
+
 // --- Add Village (available on all pages) ---
 
 soth._lgdSearchTimeout = null;
@@ -544,29 +612,41 @@ document.addEventListener('DOMContentLoaded', async function () {
   soth.auth.init();
 
   // Inject "Add Village" button into nav for logged-in users
-  const injectAddVillageBtn = function () {
+  const injectNavButtons = function () {
     if (!soth.currentUser) return;
-    if (document.getElementById('nav-add-village')) return;
     const nav = document.querySelector('nav');
     if (!nav) return;
-    const btn = document.createElement('button');
-    btn.id = 'nav-add-village';
-    btn.textContent = '+ Add Village';
-    btn.className = 'btn btn-small btn-primary';
-    btn.style.cssText = 'margin-left:8px;font-size:12px;padding:4px 10px;';
-    btn.onclick = function () { soth.showAddVillage(); };
-    // Insert before the logout button or at end
-    const logoutBtn = nav.querySelector('button[onclick*="signOut"]') || nav.querySelector('#nav-logout');
-    if (logoutBtn) {
-      nav.insertBefore(btn, logoutBtn);
-    } else {
-      nav.appendChild(btn);
+
+    // Add Village button
+    if (!document.getElementById('nav-add-village')) {
+      const btn = document.createElement('button');
+      btn.id = 'nav-add-village';
+      btn.textContent = '+ Add Village';
+      btn.className = 'btn btn-small btn-primary';
+      btn.style.cssText = 'margin-left:8px;font-size:12px;padding:4px 10px;';
+      btn.onclick = function () { soth.showAddVillage(); };
+      const logoutBtn = nav.querySelector('button[onclick*="signOut"]') || nav.querySelector('#nav-logout');
+      if (logoutBtn) { nav.insertBefore(btn, logoutBtn); }
+      else { nav.appendChild(btn); }
+    }
+
+    // Change Password button
+    if (!document.getElementById('nav-change-pw')) {
+      const cpBtn = document.createElement('button');
+      cpBtn.id = 'nav-change-pw';
+      cpBtn.textContent = 'Change PW';
+      cpBtn.className = 'btn btn-small btn-outline';
+      cpBtn.style.cssText = 'margin-left:4px;font-size:12px;padding:4px 10px;';
+      cpBtn.onclick = function () { soth.showChangePasswordModal(); };
+      const logoutBtn = nav.querySelector('button[onclick*="signOut"]') || nav.querySelector('#nav-logout');
+      if (logoutBtn) { nav.insertBefore(cpBtn, logoutBtn); }
+      else { nav.appendChild(cpBtn); }
     }
   };
 
   // Try immediately and also on auth change
-  injectAddVillageBtn();
-  document.addEventListener('soth:authchange', injectAddVillageBtn);
+  injectNavButtons();
+  document.addEventListener('soth:authchange', injectNavButtons);
 
   // Show Compare link only for admins
   const injectCompareLink = function () {
