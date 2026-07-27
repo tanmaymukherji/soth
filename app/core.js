@@ -94,14 +94,8 @@ soth.auth = {
       }
     });
     if (error) return { error };
-    // Always create profile (even if email not confirmed)
-    await soth.auth.ensureProfile(data.user, fullName);
-    // Try to sign in - works if auto-confirm enabled in Supabase
-    const signInResult = await soth.auth.signIn(email, password);
-    if (signInResult.error) {
-      return { data };
-    }
-    return { data: signInResult.data };
+    // Profile will be created when user clicks the confirmation link (handled in login.html)
+    return { data };
   },
 
   signIn: async function (email, password) {

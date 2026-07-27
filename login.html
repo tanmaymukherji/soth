@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login - SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260728bc">
-<script src="config.js?v=20260728bc"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260729b">
+<script src="config.js?v=20260729b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
-<script src="data/lgd.js?v=20260728bc"></script>
-<script src="app/core.js?v=20260728bc"></script>
+<script src="data/lgd.js?v=20260729b"></script>
+<script src="app/core.js?v=20260729b"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -87,12 +87,7 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
     if (error) {
       soth.ui.showToast(error.message, 'error');
     } else {
-      soth.ui.showToast('Account created! Signing in...', 'success');
-      const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
-      const isAdmin = soth.currentProfile?.role === 'soth_admin';
-      if (redirect) window.location.href = redirect;
-      else if (isAdmin) window.location.href = 'admin.html';
-      else window.location.href = 'dashboard.html';
+      soth.ui.showToast('Account created! Check your email for a confirmation link to activate your account.', 'success');
     }
   }
 });
@@ -111,10 +106,48 @@ async function forgotPassword() {
   }
 }
 
-// Handle password recovery redirect
+// Handle email confirmation + password recovery redirect
 (async function () {
   await soth.auth.init();
+
   const hash = window.location.hash;
+  const hashParams = hash ? new URLSearchParams(hash.substring(1)) : null;
+
+  // Handle email confirmation link (user clicked the signup confirmation link)
+  // URL format: login.html#access_token=...&token_type=bearer&type=signup&refresh_token=...
+  if (hash && hash.includes('type=signup')) {
+    const accessToken = hashParams?.get('access_token');
+    const refreshToken = hashParams?.get('refresh_token');
+    if (accessToken && refreshToken) {
+      try {
+        const sb = soth.sb();
+        const { data, error } = await sb.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        });
+        if (!error && data?.session?.user) {
+          soth.currentUser = data.session.user;
+          // Now the user IS authenticated — create profile
+          await soth.auth.ensureProfile(data.session.user, data.session.user?.user_metadata?.full_name);
+          await soth.auth.loadProfile();
+          window.history.replaceState({}, '', window.location.pathname + window.location.search);
+          soth.ui.showToast('Email verified! Signing in...', 'success');
+          const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+          const isAdmin = soth.currentProfile?.role === 'soth_admin';
+          if (redirect) window.location.href = redirect;
+          else if (isAdmin) window.location.href = 'admin.html';
+          else window.location.href = 'dashboard.html';
+          return;
+        }
+      } catch (e) {
+        console.error('Confirmation link error:', e);
+      }
+      soth.ui.showToast('Verification failed. Please try signing in.', 'error');
+      window.history.replaceState({}, '', window.location.pathname + window.location.search);
+    }
+  }
+
+  // Handle password recovery link
   if (hash && hash.includes('type=recovery')) {
     const newPw = prompt('Enter your new password (6+ characters):');
     if (newPw && newPw.length >= 6) {
@@ -125,8 +158,9 @@ async function forgotPassword() {
         soth.ui.showToast('Password updated! You can now sign in.', 'success');
       }
     }
-    window.history.replaceState({}, '', window.location.pathname);
+    window.history.replaceState({}, '', window.location.pathname + window.location.search);
   }
+
   if (soth.currentUser) {
     window.location.href = 'dashboard.html';
   }
