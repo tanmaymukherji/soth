@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login - SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260729f">
-<script src="config.js?v=20260729f"></script>
-<script src="data/lgd.js?v=20260729f"></script>
-<script src="app/core.js?v=20260729f"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260730a">
+<script src="config.js?v=20260730a"></script>
+<script src="data/lgd.js?v=20260730a"></script>
+<script src="app/core.js?v=20260730a"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -56,6 +56,7 @@ function toggleMode() {
 }
 
 document.getElementById('auth-action-btn').addEventListener('click', async function () {
+  const btn = this;
   const email = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
   const name = document.getElementById('auth-name').value.trim();
@@ -65,37 +66,49 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
     return;
   }
 
-  if (mode === 'login') {
-    const { error } = await soth.auth.signIn(email, password);
-    if (error) {
-      soth.ui.showToast(error.message, 'error');
+  btn.disabled = true;
+  btn.textContent = 'Please wait...';
+
+  try {
+    if (mode === 'login') {
+      const { error } = await soth.auth.signIn(email, password);
+      if (error) {
+        soth.ui.showToast(error.message, 'error');
+      } else {
+        const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+        const isAdmin = soth.currentProfile?.role === 'soth_admin';
+        if (redirect) window.location.href = redirect;
+        else if (isAdmin) window.location.href = 'admin.html';
+        else window.location.href = 'dashboard.html';
+      }
     } else {
-      const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
-      const isAdmin = soth.currentProfile?.role === 'soth_admin';
-      if (redirect) window.location.href = redirect;
-      else if (isAdmin) window.location.href = 'admin.html';
-      else window.location.href = 'dashboard.html';
+      if (password.length < 6) {
+        soth.ui.showToast('Password must be at least 6 characters', 'error');
+        btn.disabled = false; btn.textContent = 'Create Account';
+        return;
+      }
+      if (!name) {
+        soth.ui.showToast('Full name is required', 'error');
+        btn.disabled = false; btn.textContent = 'Create Account';
+        return;
+      }
+      const { error } = await soth.auth.signUp(email, password, name);
+      if (error) { soth.ui.showToast(error.message, 'error'); }
+      else {
+        soth.ui.showToast('Account created! Please wait for admin approval.', 'success');
+        document.getElementById('auth-email').value = '';
+        document.getElementById('auth-password').value = '';
+        document.getElementById('auth-name').value = '';
+        mode = 'login';
+        toggleMode();
+      }
     }
-  } else {
-    if (password.length < 6) {
-      soth.ui.showToast('Password must be at least 6 characters', 'error');
-      return;
-    }
-    if (!name) {
-      soth.ui.showToast('Full name is required', 'error');
-      return;
-    }
-    const { error } = await soth.auth.signUp(email, password, name);
-    if (error) {
-      soth.ui.showToast(error.message, 'error');
-    } else {
-      soth.ui.showToast('Account created! Please wait for admin approval.', 'success');
-      document.getElementById('auth-email').value = '';
-      document.getElementById('auth-password').value = '';
-      document.getElementById('auth-name').value = '';
-      mode = 'login';
-      toggleMode();
-    }
+  } catch (e) {
+    console.error('Login error:', e);
+    soth.ui.showToast('Login failed: ' + (e.message || 'Unknown error'), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = mode === 'login' ? 'Sign In' : 'Create Account';
   }
 });
 
