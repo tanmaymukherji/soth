@@ -94,30 +94,15 @@ soth.auth = {
       }
     });
     if (error) return { error };
-    // Sign-in auto triggers creation of profile via trigger (use ensureProfile)
-    await soth.auth.ensureProfile(data.user, fullName);
-    return { data };
-  },
-
-  // Send OTP for email verification (independent of signup confirmation)
-  sendOtp: async function (email) {
-    const sb = soth.sb();
-    const { data, error } = await sb.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: false }
-    });
-    return { data, error };
-  },
-
-  verifyOtp: async function (email, token) {
-    const sb = soth.sb();
-    const { data, error } = await sb.auth.verifyOtp({
-      email, token, type: 'email'
-    });
-    if (error) return { error };
-    soth.currentUser = data.user;
-    await soth.auth.loadProfile();
-    return { data };
+    // Auto-confirm is enabled in Supabase dashboard, so sign in immediately
+    const signInResult = await soth.auth.signIn(email, password);
+    if (signInResult.error) {
+      // If sign-in fails (e.g. email not confirmed), return signup data anyway
+      // Admin can manually confirm or the user can wait
+      await soth.auth.ensureProfile(data.user, fullName);
+      return { data };
+    }
+    return { data: signInResult.data };
   },
 
   signIn: async function (email, password) {

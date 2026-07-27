@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login - SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260727b">
-<script src="config.js?v=20260727b"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260727c">
+<script src="config.js?v=20260727c"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
-<script src="data/lgd.js?v=20260727b"></script>
-<script src="app/core.js?v=20260727b"></script>
+<script src="data/lgd.js?v=20260727c"></script>
+<script src="app/core.js?v=20260727c"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -21,9 +21,8 @@
 
 <main class="auth-container">
   <div class="auth-card" id="auth-card">
-    <!-- Step 1: Email + Password -->
-    <div id="step-credentials">
-      <h2 id="auth-title">Sign In</h2>
+    <h2 id="auth-title">Sign In</h2>
+    <div id="auth-form">
       <div class="field-group">
         <label for="auth-email">Email</label>
         <input type="email" id="auth-email" placeholder="your@email.com" autocomplete="email">
@@ -37,40 +36,17 @@
         <input type="text" id="auth-name" placeholder="Your name" autocomplete="name">
       </div>
       <button class="btn btn-primary" style="width:100%;" id="auth-action-btn">Sign In</button>
-      <div class="form-footer" id="auth-footer">
-        <a href="#" id="auth-toggle" onclick="toggleMode()">Create an account</a>
-        <span style="margin:0 8px">.</span>
-        <a href="#" onclick="forgotPassword()">Forgot password?</a>
-      </div>
     </div>
-
-    <!-- Step 2: OTP Verification -->
-    <div id="step-otp" style="display:none;">
-      <h2>Verify Email</h2>
-      <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">
-        We sent a 6-digit code to <strong id="otp-email-display"></strong>.<br>
-        Check your inbox (and spam folder). Enter the code below.
-      </p>
-      <div class="field-group">
-        <label for="otp-token">Verification Code</label>
-        <input type="text" id="otp-token" placeholder="000000" maxlength="6" autocomplete="one-time-code"
-          style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;">
-      </div>
-      <button class="btn btn-primary" style="width:100%;" id="otp-verify-btn">Verify & Sign In</button>
-      <div class="form-footer">
-        <a href="#" onclick="backToLogin()">Back to Sign In</a>
-        <span style="margin:0 8px">.</span>
-        <a href="#" id="otp-resend" onclick="resendOtp()">Resend Code</a>
-      </div>
+    <div class="form-footer" id="auth-footer">
+      <a href="#" id="auth-toggle" onclick="toggleMode()">Create an account</a>
+      <span style="margin:0 8px">.</span>
+      <a href="#" onclick="forgotPassword()">Forgot password?</a>
     </div>
   </div>
 </main>
 
 <script>
 let mode = 'login';
-let otpEmail = '';
-let otpPassword = '';
-let otpFullName = '';
 
 function toggleMode() {
   mode = mode === 'login' ? 'signup' : 'login';
@@ -81,29 +57,6 @@ function toggleMode() {
   document.getElementById('auth-footer').querySelector('a:last-child').style.display = mode === 'login' ? '' : 'none';
 }
 
-function showOtpStep() {
-  document.getElementById('step-credentials').style.display = 'none';
-  document.getElementById('step-otp').style.display = '';
-  document.getElementById('otp-email-display').textContent = otpEmail;
-  document.getElementById('otp-token').value = '';
-  document.getElementById('otp-token').focus();
-}
-
-function backToLogin() {
-  document.getElementById('step-credentials').style.display = '';
-  document.getElementById('step-otp').style.display = 'none';
-}
-
-async function resendOtp() {
-  const { error } = await soth.auth.sendOtp(otpEmail);
-  if (error) {
-    soth.ui.showToast(error.message, 'error');
-  } else {
-    soth.ui.showToast('New code sent!', 'success');
-  }
-}
-
-// Sign In / Sign Up
 document.getElementById('auth-action-btn').addEventListener('click', async function () {
   const email = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
@@ -130,49 +83,18 @@ document.getElementById('auth-action-btn').addEventListener('click', async funct
       soth.ui.showToast('Password must be at least 6 characters', 'error');
       return;
     }
-    otpEmail = email;
-    otpPassword = password;
-    otpFullName = name;
-    // Create account first
-    const { error: signUpError } = await soth.auth.signUp(email, password, name);
-    if (signUpError && !signUpError.message?.includes('already registered')) {
-      soth.ui.showToast(signUpError.message, 'error');
-      return;
-    }
-    // Send OTP via signInWithOtp (independent of signup confirmation)
-    const { error: otpError } = await soth.auth.sendOtp(email);
-    if (otpError) {
-      soth.ui.showToast(otpError.message, 'error');
+    const { error } = await soth.auth.signUp(email, password, name);
+    if (error) {
+      soth.ui.showToast(error.message, 'error');
     } else {
-      showOtpStep();
-      soth.ui.showToast('Code sent to your email!', 'success');
+      soth.ui.showToast('Account created! Signing in...', 'success');
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+      const isAdmin = soth.currentProfile?.role === 'soth_admin';
+      if (redirect) window.location.href = redirect;
+      else if (isAdmin) window.location.href = 'admin.html';
+      else window.location.href = 'dashboard.html';
     }
   }
-});
-
-// OTP Verify
-document.getElementById('otp-verify-btn').addEventListener('click', async function () {
-  const token = document.getElementById('otp-token').value.trim();
-  if (!token || token.length !== 6) {
-    soth.ui.showToast('Enter the 6-digit code', 'error');
-    return;
-  }
-  const { data, error } = await soth.auth.verifyOtp(otpEmail, token);
-  if (error) {
-    soth.ui.showToast(error.message, 'error');
-  } else {
-    soth.ui.showToast('Verified! Signing in...', 'success');
-    const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
-    const isAdmin = soth.currentProfile?.role === 'soth_admin';
-    if (redirect) window.location.href = redirect;
-    else if (isAdmin) window.location.href = 'admin.html';
-    else window.location.href = 'dashboard.html';
-  }
-});
-
-// Allow Enter key on OTP input
-document.getElementById('otp-token').addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') document.getElementById('otp-verify-btn').click();
 });
 
 async function forgotPassword() {
@@ -189,49 +111,10 @@ async function forgotPassword() {
   }
 }
 
-// Handle email confirmation redirect + password recovery
+// Handle password recovery redirect
 (async function () {
   await soth.auth.init();
-
   const hash = window.location.hash;
-  const params = new URLSearchParams(window.location.search);
-
-  // Handle email confirmation link (signup verification)
-  // Link format: login.html#access_token=...&token_type=bearer&type=signup
-  if (hash && hash.includes('type=signup')) {
-    try {
-      const hashParams = new URLSearchParams(hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const refreshToken = hashParams.get('refresh_token');
-
-      if (accessToken && refreshToken) {
-        const sb = soth.sb();
-        const { data, error } = await sb.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
-        });
-
-        if (!error && data?.session) {
-          soth.currentUser = data.session.user;
-          await soth.auth.loadProfile();
-          soth.ui.showToast('Email verified! Signing in...', 'success');
-          window.history.replaceState({}, '', window.location.pathname);
-          const redirect = params.get('redirect') || '';
-          const isAdmin = soth.currentProfile?.role === 'soth_admin';
-          if (redirect) window.location.href = redirect;
-          else if (isAdmin) window.location.href = 'admin.html';
-          else window.location.href = 'dashboard.html';
-          return;
-        }
-      }
-    } catch (e) {
-      console.error('Confirmation link error:', e);
-    }
-    soth.ui.showToast('Verification failed. Please try signing in.', 'error');
-    window.history.replaceState({}, '', window.location.pathname);
-  }
-
-  // Handle password recovery link
   if (hash && hash.includes('type=recovery')) {
     const newPw = prompt('Enter your new password (6+ characters):');
     if (newPw && newPw.length >= 6) {
@@ -244,7 +127,6 @@ async function forgotPassword() {
     }
     window.history.replaceState({}, '', window.location.pathname);
   }
-
   if (soth.currentUser) {
     window.location.href = 'dashboard.html';
   }
