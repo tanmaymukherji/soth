@@ -119,13 +119,13 @@ soth.admin = {
         contact_email: document.getElementById('org-email').value.trim(),
         org_type: document.getElementById('org-type').value
       };
-      let error;
+      let result;
       if (orgId) {
-        ({ error } = await sb.from('organizations').update(payload).eq('id', orgId));
+        result = await soth.auth.updateOrg({ org_id: orgId, ...payload });
       } else {
-        ({ error } = await sb.from('organizations').insert(payload));
+        result = await soth.auth.createOrg(payload);
       }
-      if (error) { soth.ui.showToast(error.message, 'error'); return; }
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
       soth.ui.showToast('Saved!', 'success');
       modal.classList.add('hidden');
       soth.admin.showSection('orgs');
@@ -133,18 +133,16 @@ soth.admin = {
   },
 
   toggleOrgStatus: async function (orgId, currentStatus) {
-    const sb = soth.sb();
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    const { error } = await sb.from('organizations').update({ status: newStatus }).eq('id', orgId);
-    if (error) { soth.ui.showToast(error.message, 'error'); return; }
+    const { error } = await soth.auth.updateOrg({ org_id: orgId, status: newStatus });
+    if (error) { soth.ui.showToast(error, 'error'); return; }
     soth.ui.showToast('Status updated', 'success');
     soth.admin.showSection('orgs');
   },
 
   setOrgType: async function (orgId, orgType) {
-    const sb = soth.sb();
-    const { error } = await sb.from('organizations').update({ org_type: orgType }).eq('id', orgId);
-    if (error) { soth.ui.showToast(error.message, 'error'); return; }
+    const { error } = await soth.auth.updateOrg({ org_id: orgId, org_type: orgType });
+    if (error) { soth.ui.showToast(error, 'error'); return; }
     soth.ui.showToast('Org type set to ' + orgType, 'success');
   },
 

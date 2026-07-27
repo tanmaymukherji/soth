@@ -41,6 +41,10 @@ Deno.serve(async (req) => {
         return await handleUpdateUser(payload, req);
       case 'deleteUser':
         return await handleDeleteUser(payload, req);
+      case 'createOrg':
+        return await handleCreateOrg(payload, req);
+      case 'updateOrg':
+        return await handleUpdateOrg(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -283,4 +287,37 @@ async function handleDeleteUser({ user_id }, req) {
   const { error } = await sb.from('local_users').delete().eq('id', user_id);
   if (error) return json({ error: error.message }, 500);
   return json({ success: true });
+}
+
+// ─── Create Org (admin only) — bypasses RLS via service key ───
+async function handleCreateOrg({ name, slug, contact_email, org_type }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create orgs' }, 403);
+  if (!name || !slug) return json({ error: 'Name and slug required' }, 400);
+  const { data: org, error } = await sb.from('organizations').insert({
+    name, slug, contact_email: contact_email || '', org_type: org_type || 'partitionr', status: 'active',
+  }).select('id, name, slug, org_type, status').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ org });
+}
+
+// ─── Update Org (admin only) — bypasses RLS via service key ───
+async function handleUpdateOrg({ org_id, name, slug, contact_email, org_type, status }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update orgs' }, 403);
+  if (!org_id) return json({ error: 'org_id required' }, 400);
+  const updates = {};
+  if (name !== undefined) updates.name = name;
+  if (slug !== undefined) updates.slug = slug;
+  if (contact_email !== undefined) updates.contact_email = contact_email;
+  if (org_type !== undefined) updates.org_type = org_type;
+  if (status !== undefined) updates.status = status;
+  if (Object.keys(updates).length === 0) return json({ error: 'Nothing to update' }, 400);
+  const { data: org, error } = await sb.from('organizations').update(updates).eq('id', org_id).select('id, name, slug, org_type, status').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ org });
 }

@@ -206,6 +206,36 @@ soth.auth = {
     }
   },
 
+  createOrg: async function (payload) {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action: 'createOrg', ...payload })
+      });
+      return await res.json();
+    } catch (e) { return { error: 'Auth service unreachable' }; }
+  },
+
+  updateOrg: async function (payload) {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action: 'updateOrg', ...payload })
+      });
+      return await res.json();
+    } catch (e) { return { error: 'Auth service unreachable' }; }
+  },
+
   isAdmin: function () {
     return soth.currentProfile?.role === 'soth_admin';
   },
