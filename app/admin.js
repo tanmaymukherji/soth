@@ -76,7 +76,7 @@ soth.admin = {
 
   showOrgForm: async function (orgId) {
     const sb = soth.sb();
-    let org = { name: '', slug: '', contact_email: '' };
+    let org = { name: '', slug: '', contact_email: '', org_type: 'partner' };
     if (orgId) {
       const { data } = await sb.from('organizations').select('*').eq('id', orgId).single();
       if (data) org = data;
