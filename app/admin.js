@@ -63,7 +63,12 @@ soth.admin = {
         <td><strong>${soth.ui.escapeHtml(o.name)}</strong></td>
         <td>${soth.ui.escapeHtml(o.slug)}</td>
         <td>${soth.ui.escapeHtml(o.contact_email)}</td>
-        <td><span class="status-badge status-${o.org_type === 'partner' ? 'active' : 'pending'}">${o.org_type || 'partner'}</span></td>
+        <td>
+          <select onchange="soth.admin.setOrgType('${o.id}', this.value)" style="font-size:12px;padding:2px 6px;border:1px solid var(--gray-300);border-radius:4px;">
+            <option value="partner"${o.org_type === 'partner' ? ' selected' : ''}>Partner</option>
+            <option value="observer"${o.org_type === 'observer' ? ' selected' : ''}>Observer</option>
+          </select>
+        </td>
         <td><span class="status-badge status-${o.status}">${o.status}</span></td>
         <td><button class="btn btn-small" onclick="soth.admin.showOrgForm('${o.id}')">Edit</button>
             <button class="btn btn-small btn-outline" onclick="soth.admin.toggleOrgStatus('${o.id}','${o.status}')">
@@ -134,6 +139,13 @@ soth.admin = {
     if (error) { soth.ui.showToast(error.message, 'error'); return; }
     soth.ui.showToast('Status updated', 'success');
     soth.admin.showSection('orgs');
+  },
+
+  setOrgType: async function (orgId, orgType) {
+    const sb = soth.sb();
+    const { error } = await sb.from('organizations').update({ org_type: orgType }).eq('id', orgId);
+    if (error) { soth.ui.showToast(error.message, 'error'); return; }
+    soth.ui.showToast('Org type set to ' + orgType, 'success');
   },
 
   renderThemes: async function (container) {
