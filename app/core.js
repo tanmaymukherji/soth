@@ -470,7 +470,8 @@ soth.ui = {
       qualitative: 'Qualitative (Yes/No/Partial)',
       quantitative_scale: 'Quantitative (Scale)',
       quantitative_numeric: 'Quantitative (Number)',
-      text: 'Text / Notes'
+      text: 'Text / Notes',
+      both: 'Qualitative + Quantitative'
     };
     return labels[dt] || dt;
   },

@@ -257,13 +257,20 @@ soth.admin = {
           <label>Theme *<select id="p-theme" required>${themeOptions}</select></label>
           <label>Name *<input type="text" id="p-name" value="${soth.ui.escapeHtml(param.name)}" required></label>
           <label>Description<textarea id="p-desc" rows="2">${soth.ui.escapeHtml(param.description || '')}</textarea></label>
-          <label>Data Type *<select id="p-dtype" onchange="soth.admin.toggleScaleFields()">
-            <option value="qualitative" ${param.data_type === 'qualitative' ? 'selected' : ''}>Qualitative</option>
-            <option value="quantitative_scale" ${param.data_type === 'quantitative_scale' ? 'selected' : ''}>Quantitative (Scale)</option>
-            <option value="quantitative_numeric" ${param.data_type === 'quantitative_numeric' ? 'selected' : ''}>Quantitative (Number)</option>
-            <option value="text" ${param.data_type === 'text' ? 'selected' : ''}>Text</option>
-          </select></label>
-          <div id="scale-fields" style="display:${param.data_type === 'quantitative_scale' ? 'block' : 'none'}">
+          <div class="field-group">
+            <label>Capture Types (select one or both) *</label>
+            <div style="display:flex;gap:16px;padding:4px 0;">
+              <label style="display:flex;align-items:center;gap:6px;font-weight:500;margin:0;">
+                <input type="checkbox" id="p-qual" onchange="soth.admin.toggleScaleFields()" ${param.data_type === 'qualitative' || param.data_type === 'both' ? 'checked' : ''}>
+                Qualitative (Yes/No/Partial)
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-weight:500;margin:0;">
+                <input type="checkbox" id="p-quant" onchange="soth.admin.toggleScaleFields()" ${param.data_type === 'quantitative_scale' || param.data_type === 'both' ? 'checked' : ''}>
+                Quantitative (0-100 scale)
+              </label>
+            </div>
+          </div>
+          <div id="scale-fields" style="display:${param.data_type === 'quantitative_scale' || param.data_type === 'both' ? 'block' : 'none'}">
             <label>Scale Max<input type="number" id="p-scale-max" value="${param.scale?.max ?? 5}" min="1" max="100"></label>
           </div>
           ${paramId ? `<input type="hidden" id="p-id" value="${paramId}">` : ''}
@@ -276,13 +283,16 @@ soth.admin = {
     modal.classList.remove('hidden');
     document.getElementById('param-form').onsubmit = async function (e) {
       e.preventDefault();
+      const qual = document.getElementById('p-qual').checked;
+      const quant = document.getElementById('p-quant').checked;
+      if (!qual && !quant) { soth.ui.showToast('Select at least one capture type', 'error'); return; }
+      const dataType = qual && quant ? 'both' : qual ? 'qualitative' : 'quantitative_scale';
       const payload = {
         theme_id: document.getElementById('p-theme').value,
         name: document.getElementById('p-name').value.trim(),
         description: document.getElementById('p-desc').value.trim(),
-        data_type: document.getElementById('p-dtype').value,
-        scale: document.getElementById('p-dtype').value === 'quantitative_scale'
-          ? { max: parseInt(document.getElementById('p-scale-max').value) || 5 } : null
+        data_type: dataType,
+        scale: quant ? { max: parseInt(document.getElementById('p-scale-max').value) || 5 } : null
       };
       let result;
       if (paramId) result = await soth.auth.updateSubParam({ sub_param_id: paramId, ...payload });
@@ -295,8 +305,8 @@ soth.admin = {
   },
 
   toggleScaleFields: function () {
-    const dtype = document.getElementById('p-dtype')?.value;
-    document.getElementById('scale-fields').style.display = dtype === 'quantitative_scale' ? 'block' : 'none';
+    const quant = document.getElementById('p-quant');
+    document.getElementById('scale-fields').style.display = quant?.checked ? 'block' : 'none';
   },
 
   toggleParamStatus: async function (paramId) {
