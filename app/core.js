@@ -448,10 +448,11 @@ soth.ui = {
     return div.innerHTML;
   },
 
-  // JS/attribute-safe escape (handles single quotes for inline JS string literals)
+  // JS/attribute-safe escape (handles single quotes + newlines for inline JS string literals)
   escapeAttr: function (str) {
     return String(str == null ? '' : str)
       .replace(/\\/g, '\\\\')
+      .replace(/\r?\n/g, '\\n')
       .replace(/'/g, "\\'")
       .replace(/"/g, '"');
   },
