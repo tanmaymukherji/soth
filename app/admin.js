@@ -239,7 +239,7 @@ soth.admin = {
   showParamForm: async function (themeId, paramId) {
     const sb = soth.sb();
     const { data: themes } = await sb.from('themes').select('id, name').eq('status', 'active');
-    let param = { name: '', description: '', data_type: 'qualitative', possible_values: [] };
+    let param = { name: '', description: '', data_type: 'both', possible_values: [] };
     if (paramId) {
       const { data } = await sb.from('sub_parameters').select('*').eq('id', paramId).single();
       if (data) param = data;
@@ -249,6 +249,8 @@ soth.admin = {
     if (!modal) return;
     const themeOptions = (themes || []).map(t =>
       `<option value="${t.id}" ${(themeId || param.theme_id) === t.id ? 'selected' : ''}>${soth.ui.escapeHtml(t.name)}</option>`).join('');
+    const qualChecked = !paramId || param.data_type === 'qualitative' || param.data_type === 'both' || !param.data_type ? 'checked' : '';
+    const quantChecked = !paramId || ['quantitative_scale', 'quantitative_numeric', 'both'].includes(param.data_type) ? 'checked' : '';
 
     modal.innerHTML = `
       <div class="modal-content">
@@ -258,20 +260,17 @@ soth.admin = {
           <label>Name *<input type="text" id="p-name" value="${soth.ui.escapeHtml(param.name)}" required></label>
           <label>Description<textarea id="p-desc" rows="2">${soth.ui.escapeHtml(param.description || '')}</textarea></label>
           <div class="field-group">
-            <label>Capture Types (select one or both) *</label>
+            <label>Capture Types (score is 0-100) *</label>
             <div style="display:flex;gap:16px;padding:4px 0;">
               <label style="display:flex;align-items:center;gap:6px;font-weight:500;margin:0;">
-                <input type="checkbox" id="p-qual" onchange="soth.admin.toggleScaleFields()" ${param.data_type === 'qualitative' || param.data_type === 'both' ? 'checked' : ''}>
+                <input type="checkbox" id="p-qual" ${qualChecked}>
                 Qualitative (Yes/No/Partial)
               </label>
               <label style="display:flex;align-items:center;gap:6px;font-weight:500;margin:0;">
-                <input type="checkbox" id="p-quant" onchange="soth.admin.toggleScaleFields()" ${param.data_type === 'quantitative_scale' || param.data_type === 'both' ? 'checked' : ''}>
+                <input type="checkbox" id="p-quant" ${quantChecked}>
                 Quantitative (0-100 scale)
               </label>
             </div>
-          </div>
-          <div id="scale-fields" style="display:${param.data_type === 'quantitative_scale' || param.data_type === 'both' ? 'block' : 'none'}">
-            <label>Scale Max<input type="number" id="p-scale-max" value="${param.scale?.max ?? 5}" min="1" max="100"></label>
           </div>
           ${paramId ? `<input type="hidden" id="p-id" value="${paramId}">` : ''}
           <div class="form-actions">
@@ -292,7 +291,7 @@ soth.admin = {
         name: document.getElementById('p-name').value.trim(),
         description: document.getElementById('p-desc').value.trim(),
         data_type: dataType,
-        scale: quant ? { max: parseInt(document.getElementById('p-scale-max').value) || 5 } : null
+        scale: null
       };
       let result;
       if (paramId) result = await soth.auth.updateSubParam({ sub_param_id: paramId, ...payload });
@@ -302,11 +301,6 @@ soth.admin = {
       modal.classList.add('hidden');
       soth.admin.showSection('themes');
     };
-  },
-
-  toggleScaleFields: function () {
-    const quant = document.getElementById('p-quant');
-    document.getElementById('scale-fields').style.display = quant?.checked ? 'block' : 'none';
   },
 
   toggleParamStatus: async function (paramId) {
