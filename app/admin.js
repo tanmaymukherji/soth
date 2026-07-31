@@ -1221,7 +1221,9 @@ soth.admin = {
 
       const formatVal = c => {
         const parts = [];
-        if (c.value_text) parts.push(c.value_text);
+        const text = (c.value_text || '').trim();
+        // Skip the literal "score" placeholder used for quantitative scale captures
+        if (text && text.toLowerCase() !== 'score') parts.push(text);
         if (c.value_scale != null) parts.push(c.value_scale);
         if (c.value_numeric != null) parts.push(c.value_numeric);
         return parts.join(' / ');
