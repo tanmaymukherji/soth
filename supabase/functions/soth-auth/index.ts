@@ -61,6 +61,16 @@ Deno.serve(async (req) => {
         return await handleCreateVillage(payload, req);
       case 'linkOrgVillage':
         return await handleLinkOrgVillage(payload, req);
+      case 'saveCapture':
+        return await handleSaveCapture(payload, req);
+      case 'submitProposal':
+        return await handleSubmitProposal(payload, req);
+      case 'approveProposal':
+        return await handleApproveProposal(payload, req);
+      case 'rejectProposal':
+        return await handleRejectProposal(payload, req);
+      case 'audit':
+        return await handleAudit(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -480,6 +490,122 @@ async function handleLinkOrgVillage({ org_id, village_id }, req) {
   const { data, error } = await sb.from('org_villages').upsert({
     org_id, village_id, start_date: new Date().toISOString().split('T')[0], status: 'active'
   }, { onConflict: 'org_id,village_id' }).select('id').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ success: true });
+}
+
+// ─── Save Capture (org member or admin) — bypasses RLS via service key ───
+async function handleSaveCapture({ org_id, village_id, sub_parameter_id, value_text, value_numeric, value_scale, data_type, evidence_url, journey_stage, captured_at }, req) {
+  const userId = getAuthUserId(req);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  const { data: user } = await sb.from('local_users').select('role, org_id, status').eq('id', userId).maybeSingle();
+  if (!user || user.status !== 'active') return json({ error: 'Account not active' }, 403);
+  const isAdmin = user.role === 'soth_admin';
+  if (!isAdmin && user.org_id !== org_id) return json({ error: 'You cannot capture data for this org' }, 403);
+  if (!org_id || !village_id || !sub_parameter_id) return json({ error: 'org_id, village_id, sub_parameter_id required' }, 400);
+
+  const record = {
+    org_id,
+    village_id,
+    sub_parameter_id,
+    value_text: value_text || '',
+    value_numeric: value_numeric != null ? value_numeric : null,
+    value_scale: value_scale != null ? value_scale : null,
+    data_type: data_type || 'qualitative',
+    evidence_url: evidence_url || '',
+    captured_by: null, // profiles FK is deprecated
+    journey_stage: journey_stage || 'baseline',
+    captured_at: captured_at || new Date().toISOString()
+  };
+  const { data: capture, error } = await sb.from('captures').insert(record).select('*').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ capture });
+}
+
+// ─── Submit Proposal (any active user) — bypasses RLS via service key ───
+async function handleSubmitProposal({ theme_id, suggested_theme_name, name, description, data_type, possible_values, scale, ecosystem }, req) {
+  const userId = getAuthUserId(req);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  const { data: user } = await sb.from('local_users').select('org_id, status').eq('id', userId).maybeSingle();
+  if (!user || user.status !== 'active') return json({ error: 'Account not active' }, 403);
+  if (!name) return json({ error: 'Name required' }, 400);
+
+  const { data: prop, error } = await sb.from('proposed_sub_parameters').insert({
+    theme_id: theme_id || null,
+    suggested_theme_name: suggested_theme_name || '',
+    name,
+    description: description || '',
+    data_type: data_type || 'qualitative',
+    possible_values: possible_values || [],
+    scale: scale || null,
+    ecosystem: ecosystem || '',
+    proposed_by_org_id: user.org_id || null,
+    proposed_by_user_id: null, // profiles FK is deprecated
+    status: 'pending'
+  }).select('*').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ proposal: prop });
+}
+
+// ─── Approve Proposal (admin only) — creates sub_parameter + marks proposal ───
+async function handleApproveProposal({ proposal_id, theme_id }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can approve proposals' }, 403);
+  if (!proposal_id) return json({ error: 'proposal_id required' }, 400);
+
+  const { data: prop } = await sb.from('proposed_sub_parameters').select('*').eq('id', proposal_id).maybeSingle();
+  if (!prop) return json({ error: 'Proposal not found' }, 404);
+
+  const finalTheme = theme_id || prop.theme_id;
+  if (!finalTheme) return json({ error: 'Proposal has no theme assigned. Provide theme_id.' }, 400);
+
+  const { data: subParam, error: subErr } = await sb.from('sub_parameters').insert({
+    theme_id: finalTheme,
+    name: prop.name,
+    description: prop.description || '',
+    data_type: prop.data_type || 'qualitative',
+    scale: prop.scale || null,
+    possible_values: prop.possible_values || [],
+    created_by_org_id: prop.proposed_by_org_id || null,
+    approved_by: null, // profiles FK is deprecated
+    status: 'active',
+    version: 1
+  }).select('id').single();
+  if (subErr) return json({ error: subErr.message }, 500);
+
+  const { error: updErr } = await sb.from('proposed_sub_parameters').update({
+    status: 'approved', reviewed_by: null, reviewed_at: new Date().toISOString()
+  }).eq('id', proposal_id);
+  if (updErr) return json({ error: updErr.message }, 500);
+
+  return json({ subParam });
+}
+
+// ─── Reject Proposal (admin only) ───
+async function handleRejectProposal({ proposal_id, reason }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can reject proposals' }, 403);
+  if (!proposal_id) return json({ error: 'proposal_id required' }, 400);
+
+  const { error } = await sb.from('proposed_sub_parameters').update({
+    status: 'rejected', reviewed_by: null, reviewed_at: new Date().toISOString(), rejection_reason: reason || ''
+  }).eq('id', proposal_id);
+  if (error) return json({ error: error.message }, 500);
+  return json({ success: true });
+}
+
+// ─── Audit log (any active user) — best-effort, bypasses RLS via service key ───
+async function handleAudit({ action, entity, entity_id, before_data, after_data }, req) {
+  const userId = getAuthUserId(req);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  const { error } = await sb.from('audit_log').insert({
+    actor_user_id: null, // profiles FK is deprecated
+    action, entity, entity_id: entity_id || '', before_data: before_data || {}, after_data: after_data || {}
+  });
   if (error) return json({ error: error.message }, 500);
   return json({ success: true });
 }

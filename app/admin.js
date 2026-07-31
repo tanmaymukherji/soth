@@ -368,24 +368,12 @@ soth.admin = {
       return;
     }
 
-    // Insert as sub_parameter
-    const { error: insertErr } = await sb.from('sub_parameters').insert({
-      theme_id: themeId || prop.theme_id,
-      name: prop.name,
-      description: prop.description,
-      data_type: prop.data_type || 'qualitative',
-      scale: prop.scale,
-      possible_values: prop.possible_values || [],
-      created_by_org_id: prop.proposed_by_org_id,
-      approved_by: soth.currentUser?.id,
-      status: 'active', version: 1
+    // Route through Edge Function (service key bypasses RLS)
+    const result = await soth.auth._adminAction('approveProposal', {
+      proposal_id: proposalId,
+      theme_id: themeId || prop.theme_id
     });
-    if (insertErr) { soth.ui.showToast('Error:' + insertErr.message, 'error'); return; }
-
-    // Mark proposal approved
-    await sb.from('proposed_sub_parameters').update({
-      status: 'approved', reviewed_by: soth.currentUser?.id, reviewed_at: new Date().toISOString()
-    }).eq('id', proposalId);
+    if (result.error) { soth.ui.showToast('Error: ' + result.error, 'error'); return; }
 
     soth.audit.log('proposal_approved', 'proposed_sub_parameters', proposalId);
 
@@ -396,11 +384,8 @@ soth.admin = {
 
   rejectProposal: async function (proposalId) {
     const reason = prompt('Rejection reason (optional):');
-    const sb = soth.sb();
-    await sb.from('proposed_sub_parameters').update({
-      status: 'rejected', reviewed_by: soth.currentUser?.id, reviewed_at: new Date().toISOString(),
-      rejection_reason: reason || ''
-    }).eq('id', proposalId);
+    const result = await soth.auth._adminAction('rejectProposal', { proposal_id: proposalId, reason: reason || '' });
+    if (result.error) { soth.ui.showToast('Error: ' + result.error, 'error'); return; }
     soth.ui.showToast('Proposal rejected', 'info');
     soth.admin.showSection('proposals');
   },

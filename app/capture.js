@@ -324,17 +324,15 @@ soth.capture = {
 
     if (!name) { soth.ui.showToast('Parameter name is required', 'error'); return; }
 
-    const sb = soth.sb();
-    const { data, error } = await sb.from('proposed_sub_parameters').insert({
+    // Route through Edge Function (service key bypasses RLS)
+    const result = await soth.auth._adminAction('submitProposal', {
       theme_id: themeId || null,
       suggested_theme_name: !themeId ? document.getElementById('propose-theme-name').textContent : '',
       name, description: desc, data_type: dataType || 'qualitative',
-      proposed_by_org_id: soth.currentProfile?.org_id,
-      proposed_by_user_id: soth.currentUser?.id,
       status: 'pending'
-    }).select().single();
+    });
 
-    if (error) { soth.ui.showToast('Error: ' + error.message, 'error'); return; }
+    if (result.error) { soth.ui.showToast('Error: ' + result.error, 'error'); return; }
     soth.ui.showToast('Proposal submitted for admin review!', 'success');
     document.getElementById('propose-modal').classList.add('hidden');
     document.getElementById('propose-form').reset();

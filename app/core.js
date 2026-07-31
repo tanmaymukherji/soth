@@ -360,9 +360,8 @@ soth.data = {
   // Insert/update a capture
   saveCapture: async function (capture) {
     try {
-      const sb = soth.data._sbOrNull();
-      if (!sb) return { error: new Error('Supabase not available') };
-      const record = {
+      // Route through Edge Function (service key bypasses RLS for custom auth)
+      const result = await soth.auth._adminAction('saveCapture', {
         org_id: capture.org_id,
         village_id: capture.village_id,
         sub_parameter_id: capture.sub_parameter_id,
@@ -371,13 +370,12 @@ soth.data = {
         value_scale: capture.value_scale != null ? capture.value_scale : null,
         data_type: capture.data_type || 'qualitative',
         evidence_url: capture.evidence_url || '',
-        captured_by: soth.currentUser?.id || null,
         journey_stage: capture.journey_stage || 'baseline',
         captured_at: new Date().toISOString()
-      };
-      const { data, error } = await sb.from('captures').insert(record).select().single();
-      if (data) soth.audit.log('capture_create', 'captures', data.id);
-      return { data, error };
+      });
+      if (result.error) return { error: typeof result.error === 'string' ? new Error(result.error) : result.error };
+      if (result.capture) soth.audit.log('capture_create', 'captures', result.capture.id);
+      return { data: result.capture, error: null };
     } catch (e) { console.warn('SoTH: saveCapture error:', e); return { error: e }; }
   },
 
@@ -414,9 +412,8 @@ soth.data = {
 soth.audit = {
   log: async function (action, entity, entityId, beforeData, afterData) {
     try {
-      const sb = soth.sb();
-      await sb.from('audit_log').insert({
-        actor_user_id: soth.currentUser?.id,
+      // Route through Edge Function (service key bypasses RLS)
+      await soth.auth._adminAction('audit', {
         action, entity, entity_id: entityId,
         before_data: beforeData || {},
         after_data: afterData || {}
