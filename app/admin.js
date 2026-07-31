@@ -21,6 +21,7 @@ soth.admin = {
           <button class="admin-nav-btn" onclick="soth.admin.showSection('analytics')">Analytics</button>
           <button class="admin-nav-btn" onclick="soth.admin.showSection('users')">Users</button>
           <button class="admin-nav-btn" onclick="soth.admin.showSection('geocoding')">Geocoding</button>
+          <button class="admin-nav-btn" onclick="soth.admin.showSection('exports')">Export Data</button>
         </nav>
         <div class="admin-main" id="admin-section-content">
           <p>Select a section from the left.</p>
@@ -47,6 +48,7 @@ soth.admin = {
       case 'analytics': await this.renderAnalytics(content); break;
       case 'users': await this.renderUsers(content); break;
       case 'geocoding': await this.renderGeocoding(content); break;
+      case 'exports': await this.renderExports(content); break;
       default: content.innerHTML = '<p>Select a section.</p>';
     }
   },
@@ -956,6 +958,114 @@ soth.admin = {
     if (btn) { btn.textContent = 'Batch Geocode All'; btn.disabled = false; }
     soth.ui.showToast(`Geocoded ${count} / ${pending?.length || 0} villages`, count > 0 ? 'success' : 'info');
     soth.admin.showSection('geocoding');
+  },
+
+  renderExports: async function (container) {
+    container.innerHTML = `
+      <div class="admin-section">
+        <h2>Export Data</h2>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:20px;">
+          Download reports in Excel (.xlsx) format. New report types will be added here as they are built.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+          <div class="card" style="padding:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Partner-wise Village List</div>
+            <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">
+              All partner organisations with their linked villages (name, district, state, block, GP).
+            </p>
+            <button class="btn btn-primary" onclick="soth.admin.exportPartnerVillageList()">Export Excel</button>
+          </div>
+          <div class="card" style="padding:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Village Parameter Chart</div>
+            <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">
+              Captured parameter values per village (theme, sub-parameter, qualitative value, score).
+            </p>
+            <button class="btn btn-primary" onclick="soth.admin.exportVillageParameterChart()">Export Excel</button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  _downloadExcel: function (rows, sheetName, fileName) {
+    if (!window.XLSX) { soth.ui.showToast('Excel library not loaded. Refresh the page.', 'error'); return; }
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, fileName);
+    soth.ui.showToast('Export downloaded', 'success');
+  },
+
+  exportPartnerVillageList: async function () {
+    const sb = soth.sb();
+    const btn = event?.target;
+    if (btn) { btn.textContent = 'Exporting...'; btn.disabled = true; }
+    try {
+      const orgs = await soth.data.organizations();
+      const rows = [];
+      for (const org of orgs) {
+        const ovs = await soth.data.orgVillages(org.id);
+        for (const ov of ovs) {
+          const v = ov.villages;
+          if (!v) continue;
+          rows.push({
+            'Partner': org.name,
+            'Village': v.name,
+            'District': v.district || '',
+            'State': v.state || '',
+            'Block': v.block || '',
+            'Gram Panchayat': v.gram_panchayat || '',
+            'Linked Since': ov.start_date || '',
+            'Coordinates': v.lat ? `${v.lat}, ${v.lng}` : ''
+          });
+        }
+      }
+      this._downloadExcel(rows, 'Partner Villages', 'partner-village-list.xlsx');
+    } catch (e) {
+      console.error('Export error:', e);
+      soth.ui.showToast('Export failed: ' + (e.message || 'Unknown'), 'error');
+    } finally {
+      if (btn) { btn.textContent = 'Export Excel'; btn.disabled = false; }
+    }
+  },
+
+  exportVillageParameterChart: async function () {
+    const sb = soth.sb();
+    const btn = event?.target;
+    if (btn) { btn.textContent = 'Exporting...'; btn.disabled = true; }
+    try {
+      const orgs = await soth.data.organizations();
+      const allSubParams = await soth.data.allSubParams();
+      const spMap = {};
+      allSubParams.forEach(sp => { spMap[sp.id] = sp; });
+      const rows = [];
+
+      for (const org of orgs) {
+        const caps = await soth.data.allCaptures({ org_id: org.id, limit: 20000 });
+        for (const c of caps) {
+          const sp = spMap[c.sub_parameter_id];
+          if (!sp) continue;
+          rows.push({
+            'Partner': org.name,
+            'Village': c.villages?.name || '',
+            'District': c.villages?.district || '',
+            'State': c.villages?.state || '',
+            'Theme': sp.themes?.name || '',
+            'Sub-Parameter': sp.name,
+            'Data Type': soth.ui.dataTypeLabel(sp.data_type),
+            'Qualitative': c.value_text || '',
+            'Score': c.value_scale != null ? c.value_scale : '',
+            'Number': c.value_numeric != null ? c.value_numeric : '',
+            'Captured At': c.captured_at ? soth.ui.formatDateTime(c.captured_at) : ''
+          });
+        }
+      }
+      this._downloadExcel(rows, 'Village Parameters', 'village-parameter-chart.xlsx');
+    } catch (e) {
+      console.error('Export error:', e);
+      soth.ui.showToast('Export failed: ' + (e.message || 'Unknown'), 'error');
+    } finally {
+      if (btn) { btn.textContent = 'Export Excel'; btn.disabled = false; }
+    }
   },
 
   deleteVillage: async function (villageId, villageName) {
