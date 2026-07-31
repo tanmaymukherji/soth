@@ -961,48 +961,171 @@ soth.admin = {
   },
 
   renderExports: async function (container) {
+    const orgs = await soth.data.organizations();
+    const partnerOpts = orgs.map(o => `<option value="${o.id}">${soth.ui.escapeHtml(o.name)}</option>`).join('');
+
     container.innerHTML = `
       <div class="admin-section">
         <h2>Export Data</h2>
         <p style="font-size:13px;color:var(--gray-500);margin-bottom:20px;">
           Download reports in Excel (.xlsx) format. New report types will be added here as they are built.
         </p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;align-items:start;">
+
           <div class="card" style="padding:16px;">
             <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Partner-wise Village List</div>
             <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">
               All partner organisations with their linked villages (name, district, state, block, GP).
             </p>
+            <label style="font-size:12px;">Partner</label>
+            <select id="pv-partner" style="margin-bottom:12px;">
+              <option value="">All Partners</option>
+              ${partnerOpts}
+            </select>
             <button class="btn btn-primary" onclick="soth.admin.exportPartnerVillageList()">Export Excel</button>
           </div>
+
           <div class="card" style="padding:16px;">
             <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Village Parameter Chart</div>
             <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">
-              Captured parameter values per village (theme, sub-parameter, qualitative value, score).
+              Captured parameter values for a chosen village. If multiple partners work in the village, each partner gets its own sheet.
             </p>
+            <label style="font-size:12px;">State</label>
+            <select id="vp-state" onchange="soth.admin.populateDistricts('vp')" style="margin-bottom:8px;"><option value="">Loading...</option></select>
+            <label style="font-size:12px;">District</label>
+            <select id="vp-district" onchange="soth.admin.populateVillages('vp')" style="margin-bottom:8px;"><option value="">-- Select State --</option></select>
+            <label style="font-size:12px;">Village</label>
+            <select id="vp-village" style="margin-bottom:12px;"><option value="">-- Select District --</option></select>
             <button class="btn btn-primary" onclick="soth.admin.exportVillageParameterChart()">Export Excel</button>
           </div>
+
+          <div class="card" style="padding:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Partner-wise Village Parameter Data</div>
+            <p style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">
+              Captured parameter values for a partner, optionally filtered by state / district / village.
+            </p>
+            <label style="font-size:12px;">Partner</label>
+            <select id="pd-partner" style="margin-bottom:8px;"><option value="">-- Select Partner --</option>${partnerOpts}</select>
+            <label style="font-size:12px;">State</label>
+            <select id="pd-state" onchange="soth.admin.populateDistricts('pd')" style="margin-bottom:8px;"><option value="">All States</option></select>
+            <label style="font-size:12px;">District</label>
+            <select id="pd-district" onchange="soth.admin.populateVillages('pd')" style="margin-bottom:8px;"><option value="">All Districts</option></select>
+            <label style="font-size:12px;">Village</label>
+            <select id="pd-village" style="margin-bottom:12px;"><option value="">All Villages</option></select>
+            <button class="btn btn-primary" onclick="soth.admin.exportPartnerVillageData()">Export Excel</button>
+          </div>
+
         </div>
       </div>`;
+
+    this.populateStates('vp');
+    this.populateStates('pd');
   },
 
-  _downloadExcel: function (rows, sheetName, fileName) {
+  _loadAllVillages: async function () {
+    if (soth.admin._allVillagesForExport) return soth.admin._allVillagesForExport;
+    const sb = soth.sb();
+    const { data } = await sb.from('villages').select('id, name, district, state').limit(10000);
+    soth.admin._allVillagesForExport = data || [];
+    return soth.admin._allVillagesForExport;
+  },
+
+  populateStates: async function (prefix) {
+    const villages = await soth.admin._loadAllVillages();
+    const states = [...new Set(villages.map(v => v.state).filter(Boolean))].sort();
+    const sel = document.getElementById(prefix + '-state');
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = prefix === 'pd'
+      ? '<option value="">All States</option>'
+      : '<option value="">-- Select State --</option>';
+    states.forEach(s => {
+      sel.innerHTML += `<option value="${soth.ui.escapeHtml(s)}"${s === current ? ' selected' : ''}>${soth.ui.escapeHtml(s)}</option>`;
+    });
+    this.populateDistricts(prefix);
+  },
+
+  populateDistricts: async function (prefix) {
+    const villages = await soth.admin._loadAllVillages();
+    const state = document.getElementById(prefix + '-state')?.value || '';
+    const distSel = document.getElementById(prefix + '-district');
+    const vilSel = document.getElementById(prefix + '-village');
+    if (!distSel) return;
+    const districts = state
+      ? [...new Set(villages.filter(v => v.state === state).map(v => v.district).filter(Boolean))].sort()
+      : [];
+    distSel.innerHTML = prefix === 'pd'
+      ? '<option value="">All Districts</option>'
+      : '<option value="">-- Select District --</option>';
+    districts.forEach(d => {
+      distSel.innerHTML += `<option value="${soth.ui.escapeHtml(d)}">${soth.ui.escapeHtml(d)}</option>`;
+    });
+    if (vilSel) {
+      vilSel.innerHTML = prefix === 'pd'
+        ? '<option value="">All Villages</option>'
+        : '<option value="">-- Select Village --</option>';
+    }
+  },
+
+  populateVillages: async function (prefix) {
+    const villages = await soth.admin._loadAllVillages();
+    const state = document.getElementById(prefix + '-state')?.value || '';
+    const district = document.getElementById(prefix + '-district')?.value || '';
+    const vilSel = document.getElementById(prefix + '-village');
+    if (!vilSel) return;
+    const list = villages.filter(v =>
+      (!state || v.state === state) && (!district || v.district === district)
+    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    vilSel.innerHTML = prefix === 'pd'
+      ? '<option value="">All Villages</option>'
+      : '<option value="">-- Select Village --</option>';
+    list.forEach(v => {
+      vilSel.innerHTML += `<option value="${v.id}">${soth.ui.escapeHtml(v.name)}</option>`;
+    });
+  },
+
+  _sanitizeSheetName: function (name) {
+    return String(name || 'Sheet').replace(/[\\[\]*?:/]/g, ' ').trim().slice(0, 31) || 'Sheet';
+  },
+
+  _downloadWorkbook: function (sheets, fileName) {
     if (!window.XLSX) { soth.ui.showToast('Excel library not loaded. Refresh the page.', 'error'); return; }
-    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    sheets.forEach(s => {
+      const ws = XLSX.utils.json_to_sheet(s.rows);
+      XLSX.utils.book_append_sheet(wb, ws, this._sanitizeSheetName(s.name));
+    });
     XLSX.writeFile(wb, fileName);
     soth.ui.showToast('Export downloaded', 'success');
   },
 
+  _captureExportRow: function (c, orgName) {
+    const sp = c.sub_parameters || {};
+    return {
+      'Partner': orgName || c.organizations?.name || '',
+      'Village': c.villages?.name || '',
+      'District': c.villages?.district || '',
+      'State': c.villages?.state || '',
+      'Theme': sp.themes?.name || '',
+      'Sub-Parameter': sp.name || '',
+      'Data Type': soth.ui.dataTypeLabel(sp.data_type),
+      'Qualitative': c.value_text || '',
+      'Score': c.value_scale != null ? c.value_scale : '',
+      'Number': c.value_numeric != null ? c.value_numeric : '',
+      'Captured At': c.captured_at ? soth.ui.formatDateTime(c.captured_at) : ''
+    };
+  },
+
   exportPartnerVillageList: async function () {
-    const sb = soth.sb();
     const btn = event?.target;
     if (btn) { btn.textContent = 'Exporting...'; btn.disabled = true; }
     try {
+      const orgId = document.getElementById('pv-partner')?.value || '';
       const orgs = await soth.data.organizations();
+      const orgsToUse = orgId ? orgs.filter(o => o.id === orgId) : orgs;
       const rows = [];
-      for (const org of orgs) {
+      for (const org of orgsToUse) {
         const ovs = await soth.data.orgVillages(org.id);
         for (const ov of ovs) {
           const v = ov.villages;
@@ -1019,7 +1142,7 @@ soth.admin = {
           });
         }
       }
-      this._downloadExcel(rows, 'Partner Villages', 'partner-village-list.xlsx');
+      this._downloadWorkbook([{ name: 'Partner Villages', rows }], 'partner-village-list.xlsx');
     } catch (e) {
       console.error('Export error:', e);
       soth.ui.showToast('Export failed: ' + (e.message || 'Unknown'), 'error');
@@ -1029,37 +1152,48 @@ soth.admin = {
   },
 
   exportVillageParameterChart: async function () {
-    const sb = soth.sb();
     const btn = event?.target;
     if (btn) { btn.textContent = 'Exporting...'; btn.disabled = true; }
     try {
-      const orgs = await soth.data.organizations();
-      const allSubParams = await soth.data.allSubParams();
-      const spMap = {};
-      allSubParams.forEach(sp => { spMap[sp.id] = sp; });
-      const rows = [];
+      const villageId = document.getElementById('vp-village')?.value;
+      if (!villageId) { soth.ui.showToast('Please select a village', 'error'); return; }
+      const caps = await soth.data.allCaptures({ village_id: villageId, limit: 50000 });
+      const byOrg = {};
+      (caps || []).forEach(c => {
+        const orgName = c.organizations?.name || 'Unknown';
+        if (!byOrg[orgName]) byOrg[orgName] = [];
+        byOrg[orgName].push(this._captureExportRow(c, orgName));
+      });
+      const sheets = Object.keys(byOrg).map(name => ({ name, rows: byOrg[name] }));
+      if (!sheets.length) { soth.ui.showToast('No capture data for this village', 'info'); return; }
+      this._downloadWorkbook(sheets, 'village-parameter-chart.xlsx');
+    } catch (e) {
+      console.error('Export error:', e);
+      soth.ui.showToast('Export failed: ' + (e.message || 'Unknown'), 'error');
+    } finally {
+      if (btn) { btn.textContent = 'Export Excel'; btn.disabled = false; }
+    }
+  },
 
-      for (const org of orgs) {
-        const caps = await soth.data.allCaptures({ org_id: org.id, limit: 20000 });
-        for (const c of caps) {
-          const sp = spMap[c.sub_parameter_id];
-          if (!sp) continue;
-          rows.push({
-            'Partner': org.name,
-            'Village': c.villages?.name || '',
-            'District': c.villages?.district || '',
-            'State': c.villages?.state || '',
-            'Theme': sp.themes?.name || '',
-            'Sub-Parameter': sp.name,
-            'Data Type': soth.ui.dataTypeLabel(sp.data_type),
-            'Qualitative': c.value_text || '',
-            'Score': c.value_scale != null ? c.value_scale : '',
-            'Number': c.value_numeric != null ? c.value_numeric : '',
-            'Captured At': c.captured_at ? soth.ui.formatDateTime(c.captured_at) : ''
-          });
-        }
-      }
-      this._downloadExcel(rows, 'Village Parameters', 'village-parameter-chart.xlsx');
+  exportPartnerVillageData: async function () {
+    const btn = event?.target;
+    if (btn) { btn.textContent = 'Exporting...'; btn.disabled = true; }
+    try {
+      const orgId = document.getElementById('pd-partner')?.value;
+      if (!orgId) { soth.ui.showToast('Please select a partner', 'error'); return; }
+      const state = document.getElementById('pd-state')?.value || '';
+      const district = document.getElementById('pd-district')?.value || '';
+      const villageId = document.getElementById('pd-village')?.value || '';
+
+      const caps = await soth.data.allCaptures({ org_id: orgId, limit: 50000 });
+      const rows = [];
+      (caps || []).forEach(c => {
+        if (villageId && c.village_id !== villageId) return;
+        if (state && c.villages?.state !== state) return;
+        if (district && c.villages?.district !== district) return;
+        rows.push(this._captureExportRow(c));
+      });
+      this._downloadWorkbook([{ name: 'Partner Parameter Data', rows }], 'partner-village-parameter-data.xlsx');
     } catch (e) {
       console.error('Export error:', e);
       soth.ui.showToast('Export failed: ' + (e.message || 'Unknown'), 'error');
