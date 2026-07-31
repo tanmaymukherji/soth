@@ -408,6 +408,7 @@ soth.admin = {
   renderVillages: async function (container, page) {
     const sb = soth.sb();
     page = page || 0;
+    soth.admin._villagesPage = page;
     const PER_PAGE = 100;
     const offset = page * PER_PAGE;
 
@@ -416,7 +417,7 @@ soth.admin = {
       .range(offset, offset + PER_PAGE - 1);
 
     const { count } = await sb.from('villages').select('*', { count: 'exact', head: true });
-    const totalPages = Math.ceil((count || 0) / PER_PAGE);
+    const totalPages = Math.max(1, Math.ceil((count || 0) / PER_PAGE));
 
     let html = '<div class="admin-section"><h2>Villages</h2>';
     html += `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
@@ -444,17 +445,37 @@ soth.admin = {
     });
     html += '</tbody></table></div>';
 
-    // Pagination
-    html += '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;">';
+    // Pagination with editable page number
+    html += '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">';
     if (page > 0) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(document.getElementById('admin-section-content'), ${page - 1})">Previous</button>`;
-    html += `<span style="font-size:13px;color:var(--gray-500);">Page ${page + 1} of ${totalPages}</span>`;
+    html += `<span style="font-size:13px;color:var(--gray-500);">Page</span>`;
+    html += `<input type="number" id="village-page-input" min="1" max="${totalPages}" value="${page + 1}"
+      style="width:60px;text-align:center;padding:4px 6px;"
+      onkeydown="if(event.key==='Enter')soth.admin.gotoVillagePage()"
+      onchange="soth.admin.gotoVillagePage()">`;
+    html += `<span style="font-size:13px;color:var(--gray-500);">of ${totalPages}</span>`;
     if (page < totalPages - 1) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(document.getElementById('admin-section-content'), ${page + 1})">Next</button>`;
     html += '</div></div>';
     container.innerHTML = html;
   },
 
+  gotoVillagePage: function () {
+    const input = document.getElementById('village-page-input');
+    if (!input) return;
+    let p = parseInt(input.value, 10);
+    if (isNaN(p) || p < 1) p = 1;
+    const max = parseInt(input.max || '1', 10);
+    if (p > max) p = max;
+    if (p - 1 !== soth.admin._villagesPage) {
+      soth.admin.renderVillages(document.getElementById('admin-section-content'), p - 1);
+    } else {
+      input.value = soth.admin._villagesPage + 1;
+    }
+  },
+
   _allVillages: null,
   _villageSearchTimer: null,
+  _villagesPage: 0,
 
   filterVillages: async function (query) {
     const q = query.toLowerCase().trim();
@@ -976,9 +997,18 @@ soth.admin = {
     document.getElementById('admin-modal').classList.add('hidden');
     if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('Village deleted', 'success');
-    // Refresh current section
+    // Refresh villages keeping the current page (or one page back if the last row on the page was deleted)
     const activeBtn = document.querySelector('.admin-nav-btn.active');
     const section = activeBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'villages';
-    soth.admin.showSection(section);
+    if (section === 'villages') {
+      let page = soth.admin._villagesPage || 0;
+      // If this page now has no rows, step back one page
+      const container = document.getElementById('admin-section-content');
+      const rows = container?.querySelectorAll('#village-table tbody tr').length || 0;
+      if (page > 0 && rows === 0) page--;
+      soth.admin.renderVillages(container, page);
+    } else {
+      soth.admin.showSection(section);
+    }
   }
 };
