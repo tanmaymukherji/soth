@@ -1186,13 +1186,56 @@ soth.admin = {
       const villageId = document.getElementById('pd-village')?.value || '';
 
       const caps = await soth.data.allCaptures({ org_id: orgId, limit: 50000 });
-      const rows = [];
-      (caps || []).forEach(c => {
-        if (villageId && c.village_id !== villageId) return;
-        if (state && c.villages?.state !== state) return;
-        if (district && c.villages?.district !== district) return;
-        rows.push(this._captureExportRow(c));
+      const filtered = (caps || []).filter(c => {
+        if (villageId && c.village_id !== villageId) return false;
+        if (state && c.villages?.state !== state) return false;
+        if (district && c.villages?.district !== district) return false;
+        return true;
       });
+      if (!filtered.length) { soth.ui.showToast('No capture data for the selected filters', 'info'); return; }
+
+      // Build sub-parameter map
+      const allSubParams = await soth.data.allSubParams();
+      const spMap = {};
+      allSubParams.forEach(sp => { spMap[sp.id] = sp; });
+
+      // Group captures by village
+      const byVillage = {};
+      const paramSet = new Set();
+      filtered.forEach(c => {
+        if (!byVillage[c.village_id]) {
+          byVillage[c.village_id] = {
+            name: c.villages?.name || '',
+            district: c.villages?.district || '',
+            state: c.villages?.state || '',
+            caps: {}
+          };
+        }
+        byVillage[c.village_id].caps[c.sub_parameter_id] = c;
+        paramSet.add(c.sub_parameter_id);
+      });
+
+      // Parameters as columns (only those with captures in the filter)
+      const params = [...paramSet].map(id => spMap[id]).filter(Boolean)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      const formatVal = c => {
+        const parts = [];
+        if (c.value_text) parts.push(c.value_text);
+        if (c.value_scale != null) parts.push(c.value_scale);
+        if (c.value_numeric != null) parts.push(c.value_numeric);
+        return parts.join(' / ');
+      };
+
+      const rows = [];
+      Object.values(byVillage).sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(info => {
+        const row = { 'Village': info.name, 'District': info.district, 'State': info.state };
+        params.forEach(p => {
+          row[p.name] = info.caps[p.id] ? formatVal(info.caps[p.id]) : '';
+        });
+        rows.push(row);
+      });
+
       this._downloadWorkbook([{ name: 'Partner Parameter Data', rows }], 'partner-village-parameter-data.xlsx');
     } catch (e) {
       console.error('Export error:', e);
