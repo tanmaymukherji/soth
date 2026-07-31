@@ -573,10 +573,10 @@ soth.admin = {
         payload.geocode_source = 'manual';
         payload.geocoded_at = new Date().toISOString();
       }
-      let error;
-      if (villageId) ({ error } = await sb.from('villages').update(payload).eq('id', villageId));
-      else ({ error } = await sb.from('villages').insert(payload));
-      if (error) { soth.ui.showToast(error.message, 'error'); return; }
+      let result;
+      if (villageId) result = await soth.auth.updateVillage({ village_id: villageId, ...payload });
+      else result = await soth.auth._adminAction('createVillage', payload);
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
       soth.ui.showToast('Saved!', 'success');
       modal.classList.add('hidden');
       soth.admin.showSection('villages');
@@ -952,16 +952,17 @@ soth.admin = {
       if (!result?.lat) result = await soth.map.geocodeViaGramEEE(v);
 
       if (result?.lat) {
-        await sb.from('villages').update({
+        const res = await soth.auth.updateVillage({
+          village_id: v.id,
           lat: result.lat, lng: result.lng,
           geocode_source: result.source || 'unknown',
           geocode_label: result.label || '',
           geocoded_at: new Date().toISOString(),
           geocode_status: 'geocoded'
-        }).eq('id', v.id);
-        count++;
+        });
+        if (!res.error) count++;
       } else {
-        await sb.from('villages').update({ geocode_status: 'unmatched' }).eq('id', v.id);
+        await soth.auth.updateVillage({ village_id: v.id, geocode_status: 'unmatched' });
       }
       // Throttle to avoid rate limits
       await new Promise(r => setTimeout(r, 400));

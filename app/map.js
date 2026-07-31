@@ -297,15 +297,16 @@ soth.map = {
   _applyGeocode: async function (village, result) {
     if (!village?.id || !result?.lat) return;
     try {
-      const sb = soth.sb();
-      if (!sb) return;
-      await sb.from('villages').update({
+      // Route through Edge Function (service key) to bypass RLS for custom auth
+      const res = await soth.auth.updateVillage({
+        village_id: village.id,
         lat: result.lat, lng: result.lng,
         geocode_source: result.source || 'unknown',
         geocode_label: result.label || '',
         geocoded_at: new Date().toISOString(),
         geocode_status: 'geocoded'
-      }).eq('id', village.id);
+      });
+      if (res.error) console.warn('applyGeocode error:', res.error);
     } catch (e) { console.warn('applyGeocode error:', e); }
   },
 

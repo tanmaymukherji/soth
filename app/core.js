@@ -256,6 +256,7 @@ soth.auth = {
   createSubParam: function (payload) { return soth.auth._adminAction('createSubParam', payload); },
   updateSubParam: function (payload) { return soth.auth._adminAction('updateSubParam', payload); },
   deleteVillage: function (payload) { return soth.auth._adminAction('deleteVillage', payload); },
+  updateVillage: function (payload) { return soth.auth._adminAction('updateVillage', payload); },
 
   isAdmin: function () {
     return soth.currentProfile?.role === 'soth_admin';
@@ -639,38 +640,37 @@ soth.showAddVillage = async function () {
     if (existing) {
       villageId = existing.id;
     } else {
-      const { data: newV } = await sb.from('villages').insert({ name, gram_panchayat: gp, block, district, state })
-        .select().single();
-      if (!newV) { soth.ui.showToast('Error creating village', 'error'); return; }
-      villageId = newV.id;
+      const result = await soth.auth._adminAction('createVillage', { name, gram_panchayat: gp, block, district, state });
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+      villageId = result.village.id;
       if (soth._pendingLat && soth._pendingLng) {
-        await sb.from('villages').update({
+        await soth.auth.updateVillage({
+          village_id: villageId,
           lat: parseFloat(soth._pendingLat), lng: parseFloat(soth._pendingLng),
           geocode_source: 'bharatlas', geocode_label: 'LGD village centroid',
           geocoded_at: new Date().toISOString(), geocode_status: 'geocoded'
-        }).eq('id', villageId);
+        });
         soth._pendingLat = null; soth._pendingLng = null;
       } else {
-        let result = await soth.map.geocodeViaBharatAtlas({ name, district, state });
-        if (!result?.lat) result = await soth.map.geocodeViaGramEEE({ name, district, state });
-        if (!result?.lat) result = await soth.map.geocodeVillage({ name, district, state });
-        if (result?.lat) {
-          await sb.from('villages').update({
-            lat: result.lat, lng: result.lng,
-            geocode_source: result.source || 'mappls',
-            geocode_label: result.label || '',
+        let geoResult = await soth.map.geocodeViaBharatAtlas({ name, district, state });
+        if (!geoResult?.lat) geoResult = await soth.map.geocodeViaGramEEE({ name, district, state });
+        if (!geoResult?.lat) geoResult = await soth.map.geocodeVillage({ name, district, state });
+        if (geoResult?.lat) {
+          await soth.auth.updateVillage({
+            village_id: villageId,
+            lat: geoResult.lat, lng: geoResult.lng,
+            geocode_source: geoResult.source || 'mappls',
+            geocode_label: geoResult.label || '',
             geocoded_at: new Date().toISOString(), geocode_status: 'geocoded'
-          }).eq('id', villageId);
+          });
         }
       }
     }
 
     // Link org to village
     if (soth.currentProfile?.org_id) {
-      const { error } = await sb.from('org_villages').upsert({
-        org_id: soth.currentProfile.org_id, village_id: villageId, start_date: new Date().toISOString().split('T')[0], status: 'active'
-      }, { onConflict: 'org_id,village_id' });
-      if (error) { soth.ui.showToast(error.message, 'error'); return; }
+      const result = await soth.auth._adminAction('linkOrgVillage', { org_id: soth.currentProfile.org_id, village_id: villageId });
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     }
 
     soth.ui.showToast('Village added!', 'success');

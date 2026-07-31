@@ -55,6 +55,12 @@ Deno.serve(async (req) => {
         return await handleUpdateSubParam(payload, req);
       case 'deleteVillage':
         return await handleDeleteVillage(payload, req);
+      case 'updateVillage':
+        return await handleUpdateVillage(payload, req);
+      case 'createVillage':
+        return await handleCreateVillage(payload, req);
+      case 'linkOrgVillage':
+        return await handleLinkOrgVillage(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -416,5 +422,64 @@ async function handleDeleteVillage({ village_id }, req) {
   const { error, count } = await sb.from('villages').delete({ count: 'exact' }).eq('id', village_id);
   if (error) return json({ error: error.message }, 500);
   if (!count) return json({ error: 'Village not found or already deleted' }, 404);
+  return json({ success: true });
+}
+
+// ─── Update Village (admin only) — bypasses RLS via service key ───
+async function handleUpdateVillage({ village_id, ...fields }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update villages' }, 403);
+  if (!village_id) return json({ error: 'village_id required' }, 400);
+
+  const allowed = ['name', 'gram_panchayat', 'block', 'district', 'state', 'lat', 'lng', 'geom', 'geocode_source', 'geocode_place_id', 'geocode_label', 'geocoded_at', 'geocoded_by', 'geocode_status', 'status'];
+  const updates = {};
+  for (const key of allowed) {
+    if (fields[key] !== undefined) updates[key] = fields[key];
+  }
+  if (Object.keys(updates).length === 0) return json({ error: 'Nothing to update' }, 400);
+
+  const { data: village, error } = await sb.from('villages').update(updates).eq('id', village_id).select('*').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ village });
+}
+
+// ─── Create Village (admin only) — bypasses RLS via service key ───
+async function handleCreateVillage(payload, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create villages' }, 403);
+  if (!payload.name || !payload.district || !payload.state) return json({ error: 'name, district, state required' }, 400);
+
+  const allowed = ['name', 'gram_panchayat', 'block', 'district', 'state', 'lat', 'lng', 'geom', 'geocode_source', 'geocode_place_id', 'geocode_label', 'geocoded_at', 'geocoded_by', 'geocode_status', 'status'];
+  const insert = {};
+  for (const key of allowed) {
+    if (payload[key] !== undefined) insert[key] = payload[key];
+  }
+  insert.status = insert.status || 'active';
+
+  const { data: village, error } = await sb.from('villages').insert(insert).select('*').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ village });
+}
+
+// ─── Link village to org (authenticated user of that org or admin) ───
+async function handleLinkOrgVillage({ org_id, village_id }, req) {
+  const userId = getAuthUserId(req);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  const { data: user } = await sb.from('local_users').select('role, org_id').eq('id', userId).maybeSingle();
+  if (!user) return json({ error: 'User not found' }, 404);
+  // Allow if user belongs to the org, is org admin/partner admin, or soth_admin
+  const isAdmin = user.role === 'soth_admin';
+  const isOwnOrg = user.org_id === org_id && ['partner_admin', 'soth_admin'].includes(user.role);
+  if (!isAdmin && !isOwnOrg) return json({ error: 'You cannot link villages for this org' }, 403);
+  if (!org_id || !village_id) return json({ error: 'org_id and village_id required' }, 400);
+
+  const { data, error } = await sb.from('org_villages').upsert({
+    org_id, village_id, start_date: new Date().toISOString().split('T')[0], status: 'active'
+  }, { onConflict: 'org_id,village_id' }).select('id').single();
+  if (error) return json({ error: error.message }, 500);
   return json({ success: true });
 }
