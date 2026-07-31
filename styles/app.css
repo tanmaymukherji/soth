@@ -250,6 +250,13 @@ textarea { resize: vertical; min-height: 60px; }
 
 .modal-overlay.hidden { display: none; }
 
+/* Global hidden utility */
+.hidden { display: none !important; }
+
+/* Dashboard theme row highlight */
+.theme-row.active-theme { background: var(--primary-light); }
+.dash-subparams td { background: var(--gray-50); }
+
 .modal-content {
   background: white;
   border-radius: var(--radius);

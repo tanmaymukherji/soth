@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard - SoTH</title>
-<link rel="stylesheet" href="styles/app.css?v=20260731d">
-<script src="config.js?v=20260731d"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260731e">
+<script src="config.js?v=20260731e"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260731d"></script>
-<script src="app/core.js?v=20260731d"></script>
-<script src="app/map.js?v=20260731d"></script>
-<script src="app/maturity.js?v=20260731d"></script>
-<script src="app/capture.js?v=20260731d"></script>
+<script src="data/lgd.js?v=20260731e"></script>
+<script src="app/core.js?v=20260731e"></script>
+<script src="app/map.js?v=20260731e"></script>
+<script src="app/maturity.js?v=20260731e"></script>
+<script src="app/capture.js?v=20260731e"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -131,27 +131,73 @@ soth.showPartnerSpider = async function () {
   if (!orgId || !container) { container.style.display = 'none'; return; }
   container.style.display = '';
 
-  const maturity = await soth.maturity.compute(orgId);
+  const [maturity, orgVillages, caps, themes, allSubParams] = await Promise.all([
+    soth.maturity.compute(orgId),
+    soth.data.orgVillages(orgId),
+    soth.data.latestCaptures(orgId),
+    soth.data.themes(),
+    soth.data.allSubParams(),
+  ]);
   const orgs = await soth.data.organizations();
   const org = orgs.find(o => o.id === orgId);
-  const themes = maturity.themes || [];
+  const themeScores = maturity.themes || [];
 
-  // Destroy existing chart if any
-  const oldCanvas = document.getElementById('partner-spider-canvas');
-  if (oldCanvas) oldCanvas.remove();
+  // Stats
+  const villages = (orgVillages || []).map(ov => ov.villages).filter(Boolean);
+  const states = new Set(villages.map(v => v.state).filter(Boolean)).size;
+  const withData = new Set((caps || []).map(c => c.village_id)).size;
 
-  container.innerHTML = `<canvas id="partner-spider-canvas"></canvas>`;
-  if (themes.length) {
+  // Params by theme
+  const paramsByTheme = {};
+  allSubParams.forEach(p => {
+    if (!paramsByTheme[p.theme_id]) paramsByTheme[p.theme_id] = [];
+    paramsByTheme[p.theme_id].push(p);
+  });
+
+  let html = '';
+  html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+    <div class="stat-card"><div class="stat-value">${villages.length}</div><div class="stat-label">Villages</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--success);">${withData}</div><div class="stat-label">Villages with Data</div></div>
+    <div class="stat-card"><div class="stat-value">${states}</div><div class="stat-label">States</div></div>
+  </div>`;
+  html += `<div style="height:320px;"><canvas id="partner-spider-canvas"></canvas></div>`;
+
+  // Theme parameters table
+  html += `<div style="margin-top:16px;"><h3 style="margin:0 0 8px 0;font-size:15px;">Parameters by Theme</h3>
+    <table class="param-table"><thead><tr><th>Theme</th><th>Score</th><th>Parameters</th></tr></thead><tbody>`;
+  themes.forEach(t => {
+    const ts = themeScores.find(mt => mt.id === t.id);
+    const score = ts?.score || 0;
+    const color = soth.map.maturityColor(score);
+    const tParams = paramsByTheme[t.id] || [];
+    html += `<tr class="theme-row" data-theme-id="${t.id}" style="cursor:pointer;" onclick="soth.toggleDashTheme('${t.id}')">
+      <td><strong>${soth.ui.escapeHtml(t.name)}</strong></td>
+      <td><span style="background:${color};color:white;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;">${score}%</span></td>
+      <td>${tParams.length}</td>
+    </tr>`;
+    html += `<tr class="dash-subparams hidden" id="dash-subparams-${t.id}">
+      <td colspan="3"><table class="param-table"><thead><tr><th>Sub-Parameter</th><th>Type</th></tr></thead><tbody>`;
+    tParams.forEach(p => {
+      html += `<tr><td>${soth.ui.escapeHtml(p.name)}</td><td>${soth.ui.dataTypeLabel(p.data_type)}</td></tr>`;
+    });
+    html += '</tbody></table></td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  container.innerHTML = html;
+
+  // Radar chart
+  if (themeScores.length) {
     new Chart(document.getElementById('partner-spider-canvas'), {
       type: 'radar',
       data: {
-        labels: themes.map(t => t.name),
+        labels: themeScores.map(t => t.name),
         datasets: [{
           label: org?.name || 'Partner',
-          data: themes.map(t => t.score),
+          data: themeScores.map(t => t.score),
           backgroundColor: 'rgba(37,99,235,0.1)',
           borderColor: '#2563eb',
-          pointBackgroundColor: themes.map(t => soth.map.maturityColor(t.score)),
+          pointBackgroundColor: themeScores.map(t => soth.map.maturityColor(t.score)),
           pointRadius: 5,
           borderWidth: 2,
         }],
@@ -166,6 +212,17 @@ soth.showPartnerSpider = async function () {
   }
 };
 
+soth.toggleDashTheme = function (themeId) {
+  const row = document.querySelector('.theme-row[data-theme-id="' + themeId + '"]');
+  const sub = document.getElementById('dash-subparams-' + themeId);
+  if (!sub) return;
+  const isOpen = !sub.classList.contains('hidden');
+  document.querySelectorAll('.dash-subparams').forEach(s => s.classList.add('hidden'));
+  if (isOpen) { row?.classList.remove('active-theme'); return; }
+  sub.classList.remove('hidden');
+  row?.classList.add('active-theme');
+};
+
 soth.loadDashboard = async function () {
   // Admin view: show all orgs overview
   if (soth.auth.isAdmin()) {
@@ -175,7 +232,8 @@ soth.loadDashboard = async function () {
     document.getElementById('nav-admin').style.display = '';
     document.getElementById('user-label').textContent = soth.currentUser?.email || '';
 
-    const orgs = await soth.data.organizations();
+    const allOrgs = await soth.data.organizations();
+    const orgs = allOrgs.filter(o => o.org_type !== 'observer');
     const allParams = await soth.data.allSubParams();
 
     // Stats across all orgs
@@ -206,7 +264,7 @@ soth.loadDashboard = async function () {
       if (m.themes?.length) partnerHtml += `<option value="${o.id}">${o.name} (${Math.round(m.overall)}%)</option>`;
     });
     partnerHtml += '</select></div>';
-    partnerHtml += '<div id="partner-spider-container" style="height:350px;display:none;"><canvas id="partner-spider-canvas"></canvas></div>';
+    partnerHtml += '<div id="partner-spider-container" style="display:none;"></div>';
 
     const ctx = document.getElementById('theme-maturity-chart');
     ctx.innerHTML = '<canvas id="maturity-canvas"></canvas>';
