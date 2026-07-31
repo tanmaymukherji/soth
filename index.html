@@ -4,17 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sense of The House (SoTH)</title>
-<link rel="stylesheet" href="styles/app.css?v=20260731e">
-<script src="config.js?v=20260731e"></script>
+<link rel="stylesheet" href="styles/app.css?v=20260731f">
+<script src="config.js?v=20260731f"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onload="window.dispatchEvent(new Event('supabaseReady'))"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="data/lgd.js?v=20260731e"></script>
-<script src="app/core.js?v=20260731e"></script>
-<script src="app/map.js?v=20260731e"></script>
-<script src="app/maturity.js?v=20260731e"></script>
-<script src="app/capture.js?v=20260731e"></script>
-<script src="app/superset.js?v=20260731e"></script>
+<script src="data/lgd.js?v=20260731f"></script>
+<script src="app/core.js?v=20260731f"></script>
+<script src="app/map.js?v=20260731f"></script>
+<script src="app/maturity.js?v=20260731f"></script>
+<script src="app/capture.js?v=20260731f"></script>
+<script src="app/superset.js?v=20260731f"></script>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -104,26 +104,34 @@
 </div>
 
 <script>
+soth._mapRenderToken = 0;
+
 soth.renderMap = async function () {
+  // Increment token — only the latest call is allowed to render
+  const token = ++soth._mapRenderToken;
+
   const themeFilter = document.getElementById('map-theme-filter')?.value || '';
   const orgFilter = document.getElementById('map-org-filter')?.value || '';
   const stateFilter = document.getElementById('map-state-filter')?.value || '';
 
   const map = await soth.map.createMap('map');
-  if (!map) return;
+  if (!map || token !== soth._mapRenderToken) return;
 
   soth.map.clearMarkers();
 
   // Wait for boundary polygons to load BEFORE adding markers (pins render on top)
   if (soth.map._boundariesPromise) await soth.map._boundariesPromise;
+  if (token !== soth._mapRenderToken) return;
 
   // Load all orgs + pre-compute their maturities in parallel
   // Only count partner orgs in stats (observers are excluded)
   const allOrgs = await soth.data.organizations();
+  if (token !== soth._mapRenderToken) return;
   const partnerOrgs = allOrgs.filter(o => o.org_type !== 'observer');
   const orgs = partnerOrgs;
   const filteredOrgs = orgFilter ? orgs.filter(o => o.id === orgFilter) : orgs;
   const maturities = await Promise.all(filteredOrgs.map(o => soth.maturity.compute(o.id)));
+  if (token !== soth._mapRenderToken) return;
   const maturityByOrg = {};
   filteredOrgs.forEach((o, i) => { maturityByOrg[o.id] = maturities[i]; });
 
@@ -131,6 +139,7 @@ soth.renderMap = async function () {
   const coordMap = {};
   for (const org of filteredOrgs) {
     const villages = await soth.data.orgVillages(org.id);
+    if (token !== soth._mapRenderToken) return;
     const maturity = maturityByOrg[org.id];
     for (const ov of villages) {
       const v = ov.villages;
@@ -138,6 +147,7 @@ soth.renderMap = async function () {
       if (stateFilter && v.state !== stateFilter) continue;
       if (themeFilter) {
         const caps = await soth.data.latestCaptures(org.id, v.id);
+        if (token !== soth._mapRenderToken) return;
         const hasTheme = caps.some(c => c.sub_parameters?.theme_id === themeFilter);
         if (!hasTheme) continue;
       }
@@ -160,6 +170,9 @@ soth.renderMap = async function () {
       }
     }
   }
+
+  // Abort if a newer filter render has started
+  if (token !== soth._mapRenderToken) return;
 
   // Render one pin per unique coordinate
   for (const key in coordMap) {
