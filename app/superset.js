@@ -34,7 +34,7 @@ soth.superset = {
         html += '<p class="empty-state">No parameters defined yet.</p>';
       } else {
         html += '<table class="param-table"><thead><tr>';
-        html += '<th>#</th><th>Sub-Parameter</th><th>Ecosystem</th><th>Data Type</th><th>Possible Values</th>';
+        html += '<th>#</th><th>Sub-Parameter</th><th>Data Type</th><th>Possible Values</th>';
         html += '</tr></thead><tbody>';
 
         params.forEach((p, i) => {
@@ -43,7 +43,6 @@ soth.superset = {
             <td><strong>${soth.ui.escapeHtml(p.name)}</strong>
               ${p.description ? `<br><small>${soth.ui.escapeHtml(p.description)}</small>` : ''}
             </td>
-            <td>${soth.ui.escapeHtml(p.ecosystem || '')}</td>
             <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
             <td>${p.possible_values?.length ? p.possible_values.join(', ') : '-'}</td>
           </tr>`;

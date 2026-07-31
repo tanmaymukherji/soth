@@ -62,27 +62,27 @@ orgRecords.forEach(o => { orgMap[o.slug] = o.id; });
 // — 2. Seed themes —
 const themeMap = {};
 const themes = [
-  { name: 'Agro ecology', sort_order: 1, swaraj_tag: '' },
-  { name: 'Energy', sort_order: 2, swaraj_tag: 'Energy Swaraj' },
-  { name: 'Biodiversity / Forest', sort_order: 3, swaraj_tag: 'Van Swaraj' },
-  { name: 'Soil', sort_order: 4, swaraj_tag: 'Mitti Swaraj' },
-  { name: 'Water', sort_order: 5, swaraj_tag: 'Jal Swaraj' },
-  { name: 'Gender and Inclusion', sort_order: 6, swaraj_tag: 'Rights and Participation Swaraj' },
-  { name: 'Health and Nurtition', sort_order: 7, swaraj_tag: 'Health and Nutrition Swaraj' },
-  { name: 'Health', sort_order: 8, swaraj_tag: '' },
-  { name: 'Healthcare', sort_order: 9, swaraj_tag: '' },
-  { name: 'Instituition', sort_order: 10, swaraj_tag: 'Strengthening of Swaraj' },
-  { name: 'Export-Import', sort_order: 11, swaraj_tag: '' },
-  { name: 'Livelihood basket', sort_order: 12, swaraj_tag: 'Ecopruner' },
-  { name: 'Income / Expense', sort_order: 13, swaraj_tag: '' },
-  { name: 'Waste', sort_order: 14, swaraj_tag: '' },
-  { name: 'Education', sort_order: 15, swaraj_tag: 'Education and development swaraj' },
-  { name: 'Commons', sort_order: 16, swaraj_tag: '' },
-  { name: 'Air', sort_order: 17, swaraj_tag: '' },
-  { name: 'Youth and employment', sort_order: 18, swaraj_tag: 'Youth leadership' },
-  { name: 'Migration', sort_order: 19, swaraj_tag: '' },
-  { name: 'Idealogy/ Thinking/ Unity', sort_order: 20, swaraj_tag: 'Vaicharik Swaraj' },
-  { name: 'Empathy', sort_order: 21, swaraj_tag: '' },
+  { name: 'Agro ecology', sort_order: 1 },
+  { name: 'Energy', sort_order: 2 },
+  { name: 'Biodiversity / Forest', sort_order: 3 },
+  { name: 'Soil', sort_order: 4 },
+  { name: 'Water', sort_order: 5 },
+  { name: 'Gender and Inclusion', sort_order: 6 },
+  { name: 'Health and Nurtition', sort_order: 7 },
+  { name: 'Health', sort_order: 8 },
+  { name: 'Healthcare', sort_order: 9 },
+  { name: 'Instituition', sort_order: 10 },
+  { name: 'Export-Import', sort_order: 11 },
+  { name: 'Livelihood basket', sort_order: 12 },
+  { name: 'Income / Expense', sort_order: 13 },
+  { name: 'Waste', sort_order: 14 },
+  { name: 'Education', sort_order: 15 },
+  { name: 'Commons', sort_order: 16 },
+  { name: 'Air', sort_order: 17 },
+  { name: 'Youth and employment', sort_order: 18 },
+  { name: 'Migration', sort_order: 19 },
+  { name: 'Idealogy/ Thinking/ Unity', sort_order: 20 },
+  { name: 'Empathy', sort_order: 21 },
 ];
 
 console.log('Seeding themes...');
@@ -101,7 +101,6 @@ for (let i = 2; i < headers.length; i++) {
 }
 
 let currentTheme = '';
-let ecosystem = '';
 
 // Map each parameter row
 const subParamsToInsert = [];
@@ -118,11 +117,9 @@ for (const row of rows) {
     const matchedTheme = themes.find(t => t.name.toLowerCase() === themeCol.toLowerCase());
     if (matchedTheme) {
       currentTheme = matchedTheme.name;
-      ecosystem = row[2] || '';
     } else {
       // Use whatever column C says
       currentTheme = themes.find(t => themeCol.toLowerCase().includes(t.name.toLowerCase()))?.name || '';
-      ecosystem = row[2] || '';
     }
     continue;
   }
@@ -131,7 +128,6 @@ for (const row of rows) {
   const themeId = themeMap[currentTheme];
   if (!themeId) continue;
 
-  const eco = row[2] || ecosystem;
   const desc = '';
 
   // Possible values based on data type
@@ -142,7 +138,6 @@ for (const row of rows) {
     description: desc,
     data_type: 'qualitative',
     possible_values: [],
-    ecosystem: eco,
     status: 'active',
     version: 1
   };

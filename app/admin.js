@@ -180,7 +180,6 @@ soth.admin = {
                 ${p.description ? `<br><small>${soth.ui.escapeHtml(p.description)}</small>` : ''}
               </td>
               <td>${soth.ui.dataTypeLabel(p.data_type)}</td>
-              <td>${p.ecosystem || ''}</td>
               <td>v${p.version}</td>
               <td>
                 <button class="btn btn-small" onclick="soth.admin.showParamForm('${t.id}','${p.id}')">Edit</button>
@@ -198,7 +197,7 @@ soth.admin = {
 
   showThemeForm: async function (themeId) {
     const sb = soth.sb();
-    let theme = { name: '', description: '', swaraj_tag: '', sort_order: 0 };
+    let theme = { name: '', description: '', sort_order: 0 };
     if (themeId) {
       const { data } = await sb.from('themes').select('*').eq('id', themeId).single();
       if (data) theme = data;
@@ -211,7 +210,6 @@ soth.admin = {
         <form id="theme-form">
           <label>Name *<input type="text" id="t-name" value="${soth.ui.escapeHtml(theme.name)}" required></label>
           <label>Description<textarea id="t-desc" rows="2">${soth.ui.escapeHtml(theme.description || '')}</textarea></label>
-          <label>Swaraj Tag<input type="text" id="t-swaraj" value="${soth.ui.escapeHtml(theme.swaraj_tag || '')}"></label>
           <label>Sort Order<input type="number" id="t-order" value="${theme.sort_order ?? 0}"></label>
           ${themeId ? `<input type="hidden" id="t-id" value="${themeId}">` : ''}
           <div class="form-actions">
@@ -226,13 +224,12 @@ soth.admin = {
       const payload = {
         name: document.getElementById('t-name').value.trim(),
         description: document.getElementById('t-desc').value.trim(),
-        swaraj_tag: document.getElementById('t-swaraj').value.trim(),
         sort_order: parseInt(document.getElementById('t-order').value) || 0
       };
-      let error;
-      if (themeId) ({ error } = await sb.from('themes').update(payload).eq('id', themeId));
-      else ({ error } = await sb.from('themes').insert(payload));
-      if (error) { soth.ui.showToast(error.message, 'error'); return; }
+      let result;
+      if (themeId) result = await soth.auth.updateTheme({ theme_id: themeId, ...payload });
+      else result = await soth.auth.createTheme(payload);
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
       soth.ui.showToast('Saved!', 'success');
       modal.classList.add('hidden');
       soth.admin.showSection('themes');
@@ -242,7 +239,7 @@ soth.admin = {
   showParamForm: async function (themeId, paramId) {
     const sb = soth.sb();
     const { data: themes } = await sb.from('themes').select('id, name').eq('status', 'active');
-    let param = { name: '', description: '', data_type: 'qualitative', ecosystem: '', possible_values: [] };
+    let param = { name: '', description: '', data_type: 'qualitative', possible_values: [] };
     if (paramId) {
       const { data } = await sb.from('sub_parameters').select('*').eq('id', paramId).single();
       if (data) param = data;
@@ -266,7 +263,6 @@ soth.admin = {
             <option value="quantitative_numeric" ${param.data_type === 'quantitative_numeric' ? 'selected' : ''}>Quantitative (Number)</option>
             <option value="text" ${param.data_type === 'text' ? 'selected' : ''}>Text</option>
           </select></label>
-          <label>Ecosystem<input type="text" id="p-eco" value="${soth.ui.escapeHtml(param.ecosystem || '')}"></label>
           <div id="scale-fields" style="display:${param.data_type === 'quantitative_scale' ? 'block' : 'none'}">
             <label>Scale Max<input type="number" id="p-scale-max" value="${param.scale?.max ?? 5}" min="1" max="100"></label>
           </div>
@@ -285,19 +281,13 @@ soth.admin = {
         name: document.getElementById('p-name').value.trim(),
         description: document.getElementById('p-desc').value.trim(),
         data_type: document.getElementById('p-dtype').value,
-        ecosystem: document.getElementById('p-eco').value.trim(),
         scale: document.getElementById('p-dtype').value === 'quantitative_scale'
           ? { max: parseInt(document.getElementById('p-scale-max').value) || 5 } : null
       };
-      let error;
-      if (paramId) {
-        const { error: e } = await sb.from('sub_parameters').update(payload).eq('id', paramId);
-        error = e;
-      } else {
-        const { error: e } = await sb.from('sub_parameters').insert(payload);
-        error = e;
-      }
-      if (error) { soth.ui.showToast(error.message, 'error'); return; }
+      let result;
+      if (paramId) result = await soth.auth.updateSubParam({ sub_param_id: paramId, ...payload });
+      else result = await soth.auth.createSubParam(payload);
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
       soth.ui.showToast('Saved!', 'success');
       modal.classList.add('hidden');
       soth.admin.showSection('themes');
@@ -313,7 +303,8 @@ soth.admin = {
     const sb = soth.sb();
     const { data: param } = await sb.from('sub_parameters').select('status').eq('id', paramId).single();
     const newStatus = param?.status === 'active' ? 'inactive' : 'active';
-    await sb.from('sub_parameters').update({ status: newStatus }).eq('id', paramId);
+    const result = await soth.auth.updateSubParam({ sub_param_id: paramId, status: newStatus });
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('Status updated', 'success');
     soth.admin.showSection('themes');
   },
@@ -381,7 +372,6 @@ soth.admin = {
       data_type: prop.data_type || 'qualitative',
       scale: prop.scale,
       possible_values: prop.possible_values || [],
-      ecosystem: prop.ecosystem || '',
       created_by_org_id: prop.proposed_by_org_id,
       approved_by: soth.currentUser?.id,
       status: 'active', version: 1

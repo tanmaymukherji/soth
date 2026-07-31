@@ -236,6 +236,26 @@ soth.auth = {
     } catch (e) { return { error: 'Auth service unreachable' }; }
   },
 
+  _adminAction: async function (action, payload) {
+    const stored = localStorage.getItem(soth.auth.USER_KEY);
+    const adminToken = stored ? JSON.parse(stored).id : '';
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ action, ...payload })
+      });
+      return await res.json();
+    } catch (e) { return { error: 'Auth service unreachable' }; }
+  },
+
+  createTheme: function (payload) { return soth.auth._adminAction('createTheme', payload); },
+  updateTheme: function (payload) { return soth.auth._adminAction('updateTheme', payload); },
+  createSubParam: function (payload) { return soth.auth._adminAction('createSubParam', payload); },
+  updateSubParam: function (payload) { return soth.auth._adminAction('updateSubParam', payload); },
+
   isAdmin: function () {
     return soth.currentProfile?.role === 'soth_admin';
   },

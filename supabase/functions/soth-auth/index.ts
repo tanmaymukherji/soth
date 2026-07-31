@@ -45,6 +45,14 @@ Deno.serve(async (req) => {
         return await handleCreateOrg(payload, req);
       case 'updateOrg':
         return await handleUpdateOrg(payload, req);
+      case 'createTheme':
+        return await handleCreateTheme(payload, req);
+      case 'updateTheme':
+        return await handleUpdateTheme(payload, req);
+      case 'createSubParam':
+        return await handleCreateSubParam(payload, req);
+      case 'updateSubParam':
+        return await handleUpdateSubParam(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -320,4 +328,77 @@ async function handleUpdateOrg({ org_id, name, slug, contact_email, org_type, st
   const { data: org, error } = await sb.from('organizations').update(updates).eq('id', org_id).select('id, name, slug, org_type, status').single();
   if (error) return json({ error: error.message }, 500);
   return json({ org });
+}
+
+// ─── Create Theme (admin only) — bypasses RLS via service key ───
+async function handleCreateTheme({ name, description, sort_order }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create themes' }, 403);
+  if (!name) return json({ error: 'Name required' }, 400);
+  const { data: theme, error } = await sb.from('themes').insert({
+    name, description: description || '', sort_order: sort_order || 0, status: 'active',
+  }).select('id, name, description, sort_order, status').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ theme });
+}
+
+// ─── Update Theme (admin only) — bypasses RLS via service key ───
+async function handleUpdateTheme({ theme_id, name, description, sort_order, status }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update themes' }, 403);
+  if (!theme_id) return json({ error: 'theme_id required' }, 400);
+  const updates = {};
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (sort_order !== undefined) updates.sort_order = sort_order;
+  if (status !== undefined) updates.status = status;
+  if (Object.keys(updates).length === 0) return json({ error: 'Nothing to update' }, 400);
+  const { data: theme, error } = await sb.from('themes').update(updates).eq('id', theme_id).select('id, name, description, sort_order, status').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ theme });
+}
+
+// ─── Create Sub-Parameter (admin only) — bypasses RLS via service key ───
+async function handleCreateSubParam({ theme_id, name, description, data_type, scale, possible_values }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create sub-parameters' }, 403);
+  if (!theme_id || !name) return json({ error: 'theme_id and name required' }, 400);
+  const { data: subParam, error } = await sb.from('sub_parameters').insert({
+    theme_id, name,
+    description: description || '',
+    data_type: data_type || 'qualitative',
+    scale: scale || null,
+    possible_values: possible_values || [],
+    status: 'active',
+    version: 1,
+  }).select('id, theme_id, name, description, data_type, status, version').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ subParam });
+}
+
+// ─── Update Sub-Parameter (admin only) — bypasses RLS via service key ───
+async function handleUpdateSubParam({ sub_param_id, theme_id, name, description, data_type, scale, possible_values, status }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update sub-parameters' }, 403);
+  if (!sub_param_id) return json({ error: 'sub_param_id required' }, 400);
+  const updates = {};
+  if (theme_id !== undefined) updates.theme_id = theme_id;
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (data_type !== undefined) updates.data_type = data_type;
+  if (scale !== undefined) updates.scale = scale;
+  if (possible_values !== undefined) updates.possible_values = possible_values;
+  if (status !== undefined) updates.status = status;
+  if (Object.keys(updates).length === 0) return json({ error: 'Nothing to update' }, 400);
+  const { data: subParam, error } = await sb.from('sub_parameters').update(updates).eq('id', sub_param_id).select('id, theme_id, name, description, data_type, status, version').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ subParam });
 }

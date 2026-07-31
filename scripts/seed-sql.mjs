@@ -72,7 +72,6 @@ sql.push('');
 
 // --- 3. Sub-parameters from CSV ---
 let currentTheme = '';
-let currentEcosystem = '';
 
 sql.push('-- Seed sub-parameters');
 for (const row of paramsRows) {
@@ -82,16 +81,14 @@ for (const row of paramsRows) {
   // Detect theme header rows (column A has text, column B is empty)
   if (paramName && !subParamName) {
     currentTheme = paramName;
-    currentEcosystem = (row[2] || '').trim();
     continue;
   }
 
   if (!subParamName || !currentTheme) continue;
-  const eco = (row[2] || currentEcosystem || '').trim();
 
   sql.push(
-    `INSERT INTO sub_parameters (theme_id, name, description, data_type, ecosystem, status, version, approved_at) ` +
-    `SELECT id, ${esc(subParamName)}, '', 'qualitative', ${esc(eco)}, 'active', 1, NOW() FROM themes WHERE name = ${esc(currentTheme)};`
+    `INSERT INTO sub_parameters (theme_id, name, description, data_type, status, version, approved_at) ` +
+    `SELECT id, ${esc(subParamName)}, '', 'qualitative', 'active', 1, NOW() FROM themes WHERE name = ${esc(currentTheme)};`
   );
 }
 sql.push('');
