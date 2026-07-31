@@ -446,9 +446,9 @@ soth.admin = {
 
     // Pagination
     html += '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;">';
-    if (page > 0) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(container, ${page - 1})">Previous</button>`;
+    if (page > 0) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(document.getElementById('admin-section-content'), ${page - 1})">Previous</button>`;
     html += `<span style="font-size:13px;color:var(--gray-500);">Page ${page + 1} of ${totalPages}</span>`;
-    if (page < totalPages - 1) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(container, ${page + 1})">Next</button>`;
+    if (page < totalPages - 1) html += `<button class="btn btn-small" onclick="soth.admin.renderVillages(document.getElementById('admin-section-content'), ${page + 1})">Next</button>`;
     html += '</div></div>';
     container.innerHTML = html;
   },
