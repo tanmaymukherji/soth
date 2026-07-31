@@ -284,6 +284,57 @@ soth.auth = {
   }
 };
 
+// --- Qualitative scoring (admin-configurable) ---
+soth.scoring = {
+  _defaults: { yes: 100, no: 0, partially: 50 },
+  _mapping: null,
+  _loaded: false,
+
+  init: async function () {
+    if (soth.scoring._loaded) return;
+    const cfg = soth.config();
+    if (!cfg.AUTH_API_URL) return;
+    try {
+      const res = await fetch(cfg.AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'getSettings', keys: ['qualitative_scoring'] })
+      });
+      const result = await res.json();
+      const value = result.settings?.qualitative_scoring;
+      if (value && typeof value === 'object') {
+        soth.scoring._mapping = Object.assign({}, soth.scoring._defaults, value);
+      } else {
+        soth.scoring._mapping = Object.assign({}, soth.scoring._defaults);
+      }
+    } catch (e) {
+      console.warn('SoTH: scoring.init error:', e);
+      soth.scoring._mapping = Object.assign({}, soth.scoring._defaults);
+    }
+    soth.scoring._loaded = true;
+  },
+
+  mapping: function () {
+    return soth.scoring._mapping || Object.assign({}, soth.scoring._defaults);
+  },
+
+  // Score for a qualitative text value (e.g. 'Yes', 'Partially', 'No')
+  qualScore: function (valueText) {
+    const key = String(valueText || '').trim().toLowerCase();
+    if (!key) return null;
+    const m = soth.scoring._mapping || soth.scoring._defaults;
+    if (key in m) return m[key];
+    return null;
+  },
+
+  // Capture -> numeric score (value_scale if present, else qualitative mapping)
+  capScore: function (cap) {
+    if (!cap) return null;
+    if (cap.value_scale != null) return cap.value_scale;
+    return soth.scoring.qualScore(cap.value_text);
+  }
+};
+
 // --- Data helpers ---
 
 // --- Data helpers ---
@@ -683,6 +734,7 @@ soth.showAddVillage = async function () {
 document.addEventListener('DOMContentLoaded', async function () {
   soth.initSupabase();
   soth.auth.init();
+  soth.scoring.init();
 
   // Inject "Add Village" button into nav for logged-in users
   const injectNavButtons = function () {

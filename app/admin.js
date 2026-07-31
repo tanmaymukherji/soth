@@ -161,7 +161,8 @@ soth.admin = {
 
     let html = '<div class="admin-section"><h2>Themes & Parameters</h2>';
     html += '<div class="admin-toolbar"><button class="btn btn-primary" onclick="soth.admin.showThemeForm()">+ Add Theme</button>';
-    html += '<button class="btn btn-secondary" onclick="soth.admin.showParamForm()">+ Add Sub-Parameter</button></div>';
+    html += '<button class="btn btn-secondary" onclick="soth.admin.showParamForm()">+ Add Sub-Parameter</button>';
+    html += '<button class="btn btn-outline" onclick="soth.admin.showQualScoring()">Qualitative Scoring</button></div>';
 
     (themes || []).forEach(t => {
       const tParams = paramsByTheme[t.id] || [];
@@ -313,6 +314,57 @@ soth.admin = {
     if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('Status updated', 'success');
     soth.admin.showSection('themes');
+  },
+
+  showQualScoring: async function () {
+    const modal = document.getElementById('admin-modal');
+    if (!modal) return;
+    const m = soth.scoring.mapping();
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:420px;">
+        <h3>Qualitative Scoring</h3>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">
+          Set the score (0-100) applied when a parameter is answered with each qualitative value.
+          Reports and maturity scores update automatically.
+        </p>
+        <div class="field-group">
+          <label for="qs-yes">Yes (%)</label>
+          <input type="number" id="qs-yes" min="0" max="100" value="${m.yes}" style="width:100px;">
+        </div>
+        <div class="field-group">
+          <label for="qs-partially">Partially (%)</label>
+          <input type="number" id="qs-partially" min="0" max="100" value="${m.partially}" style="width:100px;">
+        </div>
+        <div class="field-group">
+          <label for="qs-no">No (%)</label>
+          <input type="number" id="qs-no" min="0" max="100" value="${m.no}" style="width:100px;">
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="soth.admin.saveQualScoring()">Save</button>
+          <button class="btn btn-outline" onclick="document.getElementById('admin-modal').classList.add('hidden')">Cancel</button>
+        </div>
+      </div>`;
+    modal.classList.remove('hidden');
+  },
+
+  saveQualScoring: async function () {
+    const yes = parseInt(document.getElementById('qs-yes')?.value, 10);
+    const partially = parseInt(document.getElementById('qs-partially')?.value, 10);
+    const no = parseInt(document.getElementById('qs-no')?.value, 10);
+    if ([yes, partially, no].some(v => isNaN(v) || v < 0 || v > 100)) {
+      soth.ui.showToast('All values must be between 0 and 100', 'error');
+      return;
+    }
+    const result = await soth.auth._adminAction('updateSettings', {
+      key: 'qualitative_scoring',
+      value: { yes, partially, no }
+    });
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+    // Update local cache
+    soth.scoring._mapping = { yes, partially, no };
+    soth.scoring._loaded = true;
+    soth.ui.showToast('Scoring updated', 'success');
+    document.getElementById('admin-modal').classList.add('hidden');
   },
 
   renderProposals: async function (container) {

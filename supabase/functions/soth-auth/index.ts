@@ -71,6 +71,10 @@ Deno.serve(async (req) => {
         return await handleRejectProposal(payload, req);
       case 'audit':
         return await handleAudit(payload, req);
+      case 'getSettings':
+        return await handleGetSettings(payload);
+      case 'updateSettings':
+        return await handleUpdateSettings(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -608,4 +612,35 @@ async function handleAudit({ action, entity, entity_id, before_data, after_data 
   });
   if (error) return json({ error: error.message }, 500);
   return json({ success: true });
+}
+
+// ─── Get settings (public) ───
+async function handleGetSettings({ keys }) {
+  if (Array.isArray(keys) && keys.length) {
+    const { data, error } = await sb.from('settings').select('*').in('key', keys);
+    if (error) return json({ error: error.message }, 500);
+    const map = {};
+    (data || []).forEach(s => { map[s.key] = s.value; });
+    return json({ settings: map });
+  }
+  const { data, error } = await sb.from('settings').select('*');
+  if (error) return json({ error: error.message }, 500);
+  const map = {};
+  (data || []).forEach(s => { map[s.key] = s.value; });
+  return json({ settings: map });
+}
+
+// ─── Update settings (admin only) — bypasses RLS via service key ───
+async function handleUpdateSettings({ key, value }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update settings' }, 403);
+  if (!key || value === undefined) return json({ error: 'key and value required' }, 400);
+
+  const { data, error } = await sb.from('settings').upsert({
+    key, value, updated_at: new Date().toISOString()
+  }, { onConflict: 'key' }).select('*').single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ setting: data });
 }

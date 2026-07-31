@@ -127,7 +127,6 @@ soth.maturity = {
       const capMap = {};
       caps.forEach(c => { capMap[c.sub_parameter_id] = c; });
 
-      const textMap = { 'yes': 100, 'partially': 50, 'no': 0 };
       const excluded = new Set(['na', 'n/a', 'not_tracking']);
 
       const scoreFor = function (cap) {
@@ -135,8 +134,7 @@ soth.maturity = {
         if (cap.value_scale != null) return cap.value_scale;
         const key = (cap.value_text || '').trim().toLowerCase();
         if (excluded.has(key)) return null;
-        if (key in textMap) return textMap[key];
-        return null;
+        return soth.scoring.qualScore(cap.value_text);
       };
 
       const paramsByTheme = {};

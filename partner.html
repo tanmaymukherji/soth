@@ -72,11 +72,7 @@ soth._partnerChart = null;
 soth._capScore = function (cap) {
   if (!cap) return null;
   if (cap.value_scale != null) return cap.value_scale;
-  const t = (cap.value_text || '').trim().toLowerCase();
-  if (t === 'yes') return 100;
-  if (t === 'partially') return 50;
-  if (t === 'no') return 0;
-  return null;
+  return soth.scoring.qualScore(cap.value_text);
 };
 
 soth.renderPartnerPage = async function (orgId, orgName) {
