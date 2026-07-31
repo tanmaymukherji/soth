@@ -972,26 +972,9 @@ soth.admin = {
   },
 
   doDeleteVillage: async function (villageId) {
-    const sb = soth.sb();
-    const { data, error, count } = await sb.from('villages').delete({ count: 'exact' })
-      .eq('id', villageId);
+    const result = await soth.auth.deleteVillage({ village_id: villageId });
     document.getElementById('admin-modal').classList.add('hidden');
-    console.log('SoTH delete village response:', { villageId, data, error, count });
-    if (error) {
-      // PostgREST error object carries message + details (hint usually about FK)
-      const msg = error.message || error.toString();
-      const hint = error.hint ? ('\nHint: ' + error.hint) : '';
-      const det = error.details ? ('\nDetails: ' + error.details) : '';
-      soth.ui.showToast('Delete failed: ' + msg + hint + det || 'Unknown error', 'error');
-      return;
-    }
-    if (!count) {
-      // RBAC silently blocked or row vanished
-      const profile = soth.currentProfile;
-      const roleMsg = profile ? 'role=' + (profile.role || '?') : 'no profile';
-      soth.ui.showToast('Delete blocked (row may be protected or org-linked). ' + roleMsg, 'error');
-      return;
-    }
+    if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
     soth.ui.showToast('Village deleted', 'success');
     // Refresh current section
     const activeBtn = document.querySelector('.admin-nav-btn.active');

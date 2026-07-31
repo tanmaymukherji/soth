@@ -255,6 +255,7 @@ soth.auth = {
   updateTheme: function (payload) { return soth.auth._adminAction('updateTheme', payload); },
   createSubParam: function (payload) { return soth.auth._adminAction('createSubParam', payload); },
   updateSubParam: function (payload) { return soth.auth._adminAction('updateSubParam', payload); },
+  deleteVillage: function (payload) { return soth.auth._adminAction('deleteVillage', payload); },
 
   isAdmin: function () {
     return soth.currentProfile?.role === 'soth_admin';

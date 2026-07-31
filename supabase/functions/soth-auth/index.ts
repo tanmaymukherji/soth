@@ -53,6 +53,8 @@ Deno.serve(async (req) => {
         return await handleCreateSubParam(payload, req);
       case 'updateSubParam':
         return await handleUpdateSubParam(payload, req);
+      case 'deleteVillage':
+        return await handleDeleteVillage(payload, req);
       default:
         return json({ error: 'Unknown action: ' + action }, 400);
     }
@@ -401,4 +403,18 @@ async function handleUpdateSubParam({ sub_param_id, theme_id, name, description,
   const { data: subParam, error } = await sb.from('sub_parameters').update(updates).eq('id', sub_param_id).select('id, theme_id, name, description, data_type, status, version').single();
   if (error) return json({ error: error.message }, 500);
   return json({ subParam });
+}
+
+// ─── Delete Village (admin only) — bypasses RLS via service key ───
+async function handleDeleteVillage({ village_id }, req) {
+  const adminId = getAuthUserId(req);
+  if (!adminId) return json({ error: 'Unauthorized' }, 401);
+  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
+  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can delete villages' }, 403);
+  if (!village_id) return json({ error: 'village_id required' }, 400);
+
+  const { error, count } = await sb.from('villages').delete({ count: 'exact' }).eq('id', village_id);
+  if (error) return json({ error: error.message }, 500);
+  if (!count) return json({ error: 'Village not found or already deleted' }, 404);
+  return json({ success: true });
 }
