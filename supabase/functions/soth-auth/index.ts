@@ -88,12 +88,33 @@ function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: corsHeaders });
 }
 
-// ─── Extract user ID from Authorization header ───
-function getAuthUserId(req) {
+// ─── Extract the local user ID from a Supabase Auth bearer token ───
+async function getAuthUserId(req) {
   const auth = req.headers.get('Authorization') || '';
   if (!auth.startsWith('Bearer ')) return null;
-  // The token is simply the user ID for this simple system
-  return auth.slice(7);
+  const token = auth.slice(7);
+  const { data, error } = await sb.auth.getUser(token);
+  if (error || !data?.user?.id) return null;
+  const { data: localUser } = await sb.from('local_users')
+    .select('id')
+    .eq('auth_id', data.user.id)
+    .maybeSingle();
+  return localUser?.id || null;
+}
+
+async function getActiveLocalUser(req) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return null;
+  const { data: user } = await sb.from('local_users')
+    .select('id, role, org_id, status')
+    .eq('id', userId)
+    .maybeSingle();
+  if (!user || user.status !== 'active') return null;
+  return user;
+}
+
+function normalizeVillageText(value) {
+  return String(value || '').trim();
 }
 
 // ─── Helper: ensure Supabase Auth user exists and return session tokens ───
@@ -239,7 +260,7 @@ async function handleChangePassword({ user_id, old_password, new_password }) {
 
 // ─── Admin Reset Password — no old password needed ───
 async function handleAdminResetPassword({ user_id, new_password }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
 
   // Check if the requester is an admin
@@ -258,7 +279,7 @@ async function handleAdminResetPassword({ user_id, new_password }, req) {
 // ─── Get Profile ───
 async function handleGetProfile({ user_id }, req) {
   // Allow getting own profile via Authorization header, or admin lookup
-  const authUserId = getAuthUserId(req);
+  const authUserId = await getAuthUserId(req);
   const targetId = user_id || authUserId;
   if (!targetId) return json({ error: 'User ID required' }, 400);
 
@@ -275,7 +296,7 @@ async function handleGetProfile({ user_id }, req) {
 
 // ─── List Users (admin only) ───
 async function handleListUsers(req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can list users' }, 403);
@@ -286,7 +307,7 @@ async function handleListUsers(req) {
 
 // ─── Update User (admin only) ───
 async function handleUpdateUser({ user_id, role, status, org_id }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update users' }, 403);
@@ -306,7 +327,7 @@ async function handleUpdateUser({ user_id, role, status, org_id }, req) {
 
 // ─── Delete User (admin only) — removes from local_users only, not affecting any data ───
 async function handleDeleteUser({ user_id }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can delete users' }, 403);
@@ -321,7 +342,7 @@ async function handleDeleteUser({ user_id }, req) {
 
 // ─── Create Org (admin only) — bypasses RLS via service key ───
 async function handleCreateOrg({ name, slug, contact_email, org_type }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create orgs' }, 403);
@@ -335,7 +356,7 @@ async function handleCreateOrg({ name, slug, contact_email, org_type }, req) {
 
 // ─── Update Org (admin only) — bypasses RLS via service key ───
 async function handleUpdateOrg({ org_id, name, slug, contact_email, org_type, status }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update orgs' }, 403);
@@ -354,7 +375,7 @@ async function handleUpdateOrg({ org_id, name, slug, contact_email, org_type, st
 
 // ─── Create Theme (admin only) — bypasses RLS via service key ───
 async function handleCreateTheme({ name, description, sort_order }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create themes' }, 403);
@@ -368,7 +389,7 @@ async function handleCreateTheme({ name, description, sort_order }, req) {
 
 // ─── Update Theme (admin only) — bypasses RLS via service key ───
 async function handleUpdateTheme({ theme_id, name, description, sort_order, status }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update themes' }, 403);
@@ -386,7 +407,7 @@ async function handleUpdateTheme({ theme_id, name, description, sort_order, stat
 
 // ─── Create Sub-Parameter (admin only) — bypasses RLS via service key ───
 async function handleCreateSubParam({ theme_id, name, description, data_type, scale, possible_values }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create sub-parameters' }, 403);
@@ -406,7 +427,7 @@ async function handleCreateSubParam({ theme_id, name, description, data_type, sc
 
 // ─── Update Sub-Parameter (admin only) — bypasses RLS via service key ───
 async function handleUpdateSubParam({ sub_param_id, theme_id, name, description, data_type, scale, possible_values, status }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update sub-parameters' }, 403);
@@ -427,7 +448,7 @@ async function handleUpdateSubParam({ sub_param_id, theme_id, name, description,
 
 // ─── Delete Village (admin only) — bypasses RLS via service key ───
 async function handleDeleteVillage({ village_id }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can delete villages' }, 403);
@@ -441,7 +462,7 @@ async function handleDeleteVillage({ village_id }, req) {
 
 // ─── Update Village (admin only) — bypasses RLS via service key ───
 async function handleUpdateVillage({ village_id, ...fields }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update villages' }, 403);
@@ -459,12 +480,12 @@ async function handleUpdateVillage({ village_id, ...fields }, req) {
   return json({ village });
 }
 
-// ─── Create Village (admin only) — bypasses RLS via service key ───
+// ─── Create/reuse Village — soth_admin globally, partner_admin for own org link flow ───
 async function handleCreateVillage(payload, req) {
-  const adminId = getAuthUserId(req);
-  if (!adminId) return json({ error: 'Unauthorized' }, 401);
-  const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
-  if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can create villages' }, 403);
+  const user = await getActiveLocalUser(req);
+  if (!user) return json({ error: 'Unauthorized' }, 401);
+  const canCreate = user.role === 'soth_admin' || (user.role === 'partner_admin' && !!user.org_id);
+  if (!canCreate) return json({ error: 'Only SoTH Admins and Partner Admins can create villages' }, 403);
   if (!payload.name || !payload.district || !payload.state) return json({ error: 'name, district, state required' }, 400);
 
   const allowed = ['name', 'gram_panchayat', 'block', 'district', 'state', 'lat', 'lng', 'geom', 'geocode_source', 'geocode_place_id', 'geocode_label', 'geocoded_at', 'geocoded_by', 'geocode_status', 'status'];
@@ -472,22 +493,47 @@ async function handleCreateVillage(payload, req) {
   for (const key of allowed) {
     if (payload[key] !== undefined) insert[key] = payload[key];
   }
+  insert.name = normalizeVillageText(insert.name);
+  insert.gram_panchayat = normalizeVillageText(insert.gram_panchayat);
+  insert.block = normalizeVillageText(insert.block);
+  insert.district = normalizeVillageText(insert.district);
+  insert.state = normalizeVillageText(insert.state);
   insert.status = insert.status || 'active';
 
+  const { data: existing, error: lookupError } = await sb.from('villages')
+    .select('*')
+    .eq('name', insert.name)
+    .eq('block', insert.block || '')
+    .eq('district', insert.district)
+    .eq('state', insert.state)
+    .maybeSingle();
+  if (lookupError) return json({ error: lookupError.message }, 500);
+  if (existing) return json({ village: existing, reused: true });
+
   const { data: village, error } = await sb.from('villages').insert(insert).select('*').single();
-  if (error) return json({ error: error.message }, 500);
+  if (error) {
+    if (error.code === '23505') {
+      const { data: afterConflict } = await sb.from('villages')
+        .select('*')
+        .eq('name', insert.name)
+        .eq('block', insert.block || '')
+        .eq('district', insert.district)
+        .eq('state', insert.state)
+        .maybeSingle();
+      if (afterConflict) return json({ village: afterConflict, reused: true });
+    }
+    return json({ error: error.message }, 500);
+  }
   return json({ village });
 }
 
 // ─── Link village to org (authenticated user of that org or admin) ───
 async function handleLinkOrgVillage({ org_id, village_id }, req) {
-  const userId = getAuthUserId(req);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
-  const { data: user } = await sb.from('local_users').select('role, org_id').eq('id', userId).maybeSingle();
-  if (!user) return json({ error: 'User not found' }, 404);
-  // Allow if user belongs to the org, is org admin/partner admin, or soth_admin
+  const user = await getActiveLocalUser(req);
+  if (!user) return json({ error: 'Unauthorized' }, 401);
+  // Allow if user is partner_admin for their own org, or soth_admin for any org
   const isAdmin = user.role === 'soth_admin';
-  const isOwnOrg = user.org_id === org_id && ['partner_admin', 'soth_admin'].includes(user.role);
+  const isOwnOrg = user.org_id === org_id && user.role === 'partner_admin';
   if (!isAdmin && !isOwnOrg) return json({ error: 'You cannot link villages for this org' }, 403);
   if (!org_id || !village_id) return json({ error: 'org_id and village_id required' }, 400);
 
@@ -500,7 +546,7 @@ async function handleLinkOrgVillage({ org_id, village_id }, req) {
 
 // ─── Save Capture (org member or admin) — bypasses RLS via service key ───
 async function handleSaveCapture({ org_id, village_id, sub_parameter_id, value_text, value_numeric, value_scale, data_type, evidence_url, journey_stage, captured_at }, req) {
-  const userId = getAuthUserId(req);
+  const userId = await getAuthUserId(req);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
   const { data: user } = await sb.from('local_users').select('role, org_id, status').eq('id', userId).maybeSingle();
   if (!user || user.status !== 'active') return json({ error: 'Account not active' }, 403);
@@ -528,7 +574,7 @@ async function handleSaveCapture({ org_id, village_id, sub_parameter_id, value_t
 
 // ─── Submit Proposal (any active user) — bypasses RLS via service key ───
 async function handleSubmitProposal({ theme_id, suggested_theme_name, name, description, data_type, possible_values, scale, ecosystem }, req) {
-  const userId = getAuthUserId(req);
+  const userId = await getAuthUserId(req);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
   const { data: user } = await sb.from('local_users').select('org_id, status').eq('id', userId).maybeSingle();
   if (!user || user.status !== 'active') return json({ error: 'Account not active' }, 403);
@@ -553,7 +599,7 @@ async function handleSubmitProposal({ theme_id, suggested_theme_name, name, desc
 
 // ─── Approve Proposal (admin only) — creates sub_parameter + marks proposal ───
 async function handleApproveProposal({ proposal_id, theme_id }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can approve proposals' }, 403);
@@ -589,7 +635,7 @@ async function handleApproveProposal({ proposal_id, theme_id }, req) {
 
 // ─── Reject Proposal (admin only) ───
 async function handleRejectProposal({ proposal_id, reason }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can reject proposals' }, 403);
@@ -604,7 +650,7 @@ async function handleRejectProposal({ proposal_id, reason }, req) {
 
 // ─── Audit log (any active user) — best-effort, bypasses RLS via service key ───
 async function handleAudit({ action, entity, entity_id, before_data, after_data }, req) {
-  const userId = getAuthUserId(req);
+  const userId = await getAuthUserId(req);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
   const { error } = await sb.from('audit_log').insert({
     actor_user_id: null, // profiles FK is deprecated
@@ -632,7 +678,7 @@ async function handleGetSettings({ keys }) {
 
 // ─── Update settings (admin only) — bypasses RLS via service key ───
 async function handleUpdateSettings({ key, value }, req) {
-  const adminId = getAuthUserId(req);
+  const adminId = await getAuthUserId(req);
   if (!adminId) return json({ error: 'Unauthorized' }, 401);
   const { data: admin } = await sb.from('local_users').select('role').eq('id', adminId).maybeSingle();
   if (!admin || admin.role !== 'soth_admin') return json({ error: 'Only admins can update settings' }, 403);

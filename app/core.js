@@ -45,6 +45,19 @@ soth._authCall = async function (payload) {
   }
 };
 
+soth._authHeaders = async function () {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const sb = soth.sb();
+    const { data } = sb ? await sb.auth.getSession() : { data: null };
+    const token = data?.session?.access_token;
+    if (token) headers.Authorization = 'Bearer ' + token;
+  } catch (e) {
+    console.warn('SoTH: auth token unavailable:', e);
+  }
+  return headers;
+};
+
 soth.auth = {
   USER_KEY: 'soth_user',
 
@@ -127,14 +140,12 @@ soth.auth = {
   },
 
   adminResetPassword: async function (userId, newPassword) {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action: 'adminResetPassword', user_id: userId, new_password: newPassword })
       });
       return await res.json();
@@ -144,14 +155,12 @@ soth.auth = {
   },
 
   deleteUser: async function (userId) {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action: 'deleteUser', user_id: userId })
       });
       return await res.json();
@@ -161,14 +170,12 @@ soth.auth = {
   },
 
   updateProfile: async function (updates) {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'AUTH_API_URL not configured' };
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action: 'updateUser', ...updates })
       });
       const result = await res.json();
@@ -183,15 +190,13 @@ soth.auth = {
   },
 
   listUsers: async function () {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return [];
-    if (!adminToken) return [];
+    if (!soth.currentUser) return [];
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action: 'listUsers' })
       });
       const result = await res.json();
@@ -207,14 +212,12 @@ soth.auth = {
   },
 
   createOrg: async function (payload) {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action: 'createOrg', ...payload })
       });
       return await res.json();
@@ -222,14 +225,12 @@ soth.auth = {
   },
 
   updateOrg: async function (payload) {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action: 'updateOrg', ...payload })
       });
       return await res.json();
@@ -237,14 +238,12 @@ soth.auth = {
   },
 
   _adminAction: async function (action, payload) {
-    const stored = localStorage.getItem(soth.auth.USER_KEY);
-    const adminToken = stored ? JSON.parse(stored).id : '';
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
     try {
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        headers: await soth._authHeaders(),
         body: JSON.stringify({ action, ...payload })
       });
       return await res.json();
@@ -739,31 +738,34 @@ soth.showAddVillage = async function () {
     if (existing) {
       villageId = existing.id;
     } else {
-      const result = await soth.auth._adminAction('createVillage', { name, gram_panchayat: gp, block, district, state });
-      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
-      villageId = result.village.id;
+      const payload = { name, gram_panchayat: gp, block, district, state };
       if (soth._pendingLat && soth._pendingLng) {
-        await soth.auth.updateVillage({
-          village_id: villageId,
-          lat: parseFloat(soth._pendingLat), lng: parseFloat(soth._pendingLng),
-          geocode_source: 'bharatlas', geocode_label: 'LGD village centroid',
-          geocoded_at: new Date().toISOString(), geocode_status: 'geocoded'
+        Object.assign(payload, {
+          lat: parseFloat(soth._pendingLat),
+          lng: parseFloat(soth._pendingLng),
+          geocode_source: 'bharatlas',
+          geocode_label: 'LGD village centroid',
+          geocoded_at: new Date().toISOString(),
+          geocode_status: 'geocoded'
         });
-        soth._pendingLat = null; soth._pendingLng = null;
       } else {
         let geoResult = await soth.map.geocodeViaBharatAtlas({ name, district, state });
         if (!geoResult?.lat) geoResult = await soth.map.geocodeViaGramEEE({ name, district, state });
-        if (!geoResult?.lat) geoResult = await soth.map.geocodeVillage({ name, district, state });
         if (geoResult?.lat) {
-          await soth.auth.updateVillage({
-            village_id: villageId,
-            lat: geoResult.lat, lng: geoResult.lng,
-            geocode_source: geoResult.source || 'mappls',
+          Object.assign(payload, {
+            lat: geoResult.lat,
+            lng: geoResult.lng,
+            geocode_source: geoResult.source || 'bharatlas',
             geocode_label: geoResult.label || '',
-            geocoded_at: new Date().toISOString(), geocode_status: 'geocoded'
+            geocoded_at: new Date().toISOString(),
+            geocode_status: 'geocoded'
           });
         }
       }
+      const result = await soth.auth._adminAction('createVillage', payload);
+      if (result.error) { soth.ui.showToast(result.error, 'error'); return; }
+      villageId = result.village.id;
+      soth._pendingLat = null; soth._pendingLng = null;
     }
 
     // Link org to village
