@@ -241,9 +241,11 @@ soth.auth = {
     const cfg = soth.config();
     if (!cfg.AUTH_API_URL) return { error: 'Not configured' };
     try {
+      const headers = await soth._authHeaders();
+      if (!headers.Authorization) return { error: 'Session expired. Please sign out and sign in again.' };
       const res = await fetch(cfg.AUTH_API_URL, {
         method: 'POST',
-        headers: await soth._authHeaders(),
+        headers,
         body: JSON.stringify({ action, ...payload })
       });
       return await res.json();

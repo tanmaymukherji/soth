@@ -99,7 +99,18 @@ async function getAuthUserId(req) {
     .select('id')
     .eq('auth_id', data.user.id)
     .maybeSingle();
-  return localUser?.id || null;
+  if (localUser?.id) return localUser.id;
+
+  const email = data.user.email?.toLowerCase().trim();
+  if (!email) return null;
+  const { data: userByEmail } = await sb.from('local_users')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+  if (!userByEmail?.id) return null;
+
+  await sb.from('local_users').update({ auth_id: data.user.id }).eq('id', userByEmail.id);
+  return userByEmail.id;
 }
 
 async function getActiveLocalUser(req) {
