@@ -606,7 +606,8 @@ soth.searchLGDVillage = function () {
     results.innerHTML = '<div style="padding:8px;color:var(--gray-500);font-size:12px;">Searching...</div>';
     results.style.display = '';
     try {
-      const r = await fetch('https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=' + encodeURIComponent(q) + '&select=vilname11,dtname,stname,xmin,ymin,xmax,ymax&limit=10');
+      const select = 'vilname11,dtname,stname,sdtname,block_name,gp_name,xmin,ymin,xmax,ymax,vil_lgd';
+      const r = await fetch('https://bharatlas.com/api/v1/layers/lgd_villages/query?where=vilname11=' + encodeURIComponent(q) + '&select=' + encodeURIComponent(select) + '&limit=10');
       if (!r.ok) { results.style.display = 'none'; return; }
       const data = await r.json();
       if (!data?.data?.rows?.length) {
@@ -616,9 +617,21 @@ soth.searchLGDVillage = function () {
       let html = data.data.rows.map((v) => {
         const lat = v.xmin != null ? ((parseFloat(v.ymin) + parseFloat(v.ymax)) / 2).toFixed(6) : '';
         const lng = v.xmin != null ? ((parseFloat(v.xmin) + parseFloat(v.xmax)) / 2).toFixed(6) : '';
+        const block = v.block_name || v.sdtname || '';
+        const gp = v.gp_name || '';
+        const payload = encodeURIComponent(JSON.stringify({
+          name: v.vilname11 || '',
+          district: v.dtname || '',
+          state: v.stname || '',
+          block,
+          gram_panchayat: gp,
+          lat,
+          lng
+        }));
         return '<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;" ' +
-          'onclick="soth.selectLGDVillage(\'' + v.vilname11.replace(/'/g, "\\'") + '\',\'' + (v.dtname || '').replace(/'/g, "\\'") + '\',\'' + (v.stname || '').replace(/'/g, "\\'") + '\',' + lat + ',' + lng + ')">' +
+          'onclick="soth.selectLGDVillagePayload(\'' + payload + '\')">' +
           '<strong>' + soth.ui.escapeHtml(v.vilname11) + '</strong> - ' + soth.ui.escapeHtml(v.dtname || '') + ', ' + soth.ui.escapeHtml(v.stname || '') +
+          (block ? '<br><span style="color:var(--gray-500);font-size:11px;">Block: ' + soth.ui.escapeHtml(block) + (gp ? ' | GP: ' + soth.ui.escapeHtml(gp) : '') + '</span>' : '') +
           (lat ? ' <span style="color:var(--gray-400);font-size:11px;">(' + lat + ', ' + lng + ')</span>' : '') +
           '</div>';
       }).join('');
@@ -629,10 +642,44 @@ soth.searchLGDVillage = function () {
   }, 500);
 };
 
-soth.selectLGDVillage = function (name, district, state, lat, lng) {
+soth.selectLGDVillagePayload = function (encodedPayload) {
+  try {
+    const payload = JSON.parse(decodeURIComponent(encodedPayload || ''));
+    soth.selectLGDVillage(payload);
+  } catch (e) {
+    console.warn('SoTH: invalid LGD village payload:', e);
+  }
+};
+
+soth.selectLGDVillage = function (village) {
+  const name = village?.name || '';
+  const district = village?.district || '';
+  const state = village?.state || '';
+  const block = village?.block || '';
+  const gp = village?.gram_panchayat || '';
+  const lat = village?.lat;
+  const lng = village?.lng;
+
   document.getElementById('av-name').value = name;
   if (district) document.getElementById('av-district').value = district;
-  if (state) { const sel = document.getElementById('av-state'); for (let i = 0; i < sel.options.length; i++) { if (sel.options[i].value.toLowerCase() === state.toLowerCase()) { sel.selectedIndex = i; break; } } }
+  if (block) document.getElementById('av-block').value = block;
+  if (gp) document.getElementById('av-gp').value = gp;
+  if (state) {
+    const sel = document.getElementById('av-state');
+    const canonical = (window.SOTH_LGD?.states || []).find(s => s.name.toLowerCase() === state.toLowerCase())?.name || state;
+    let matched = false;
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value.toLowerCase() === canonical.toLowerCase()) {
+        sel.selectedIndex = i;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      sel.add(new Option(canonical, canonical));
+      sel.value = canonical;
+    }
+  }
   if (lat && lng) {
     soth._pendingLat = lat;
     soth._pendingLng = lng;
@@ -649,8 +696,12 @@ soth.showAddVillage = async function () {
     modal.className = 'modal-overlay hidden';
     document.body.appendChild(modal);
   }
-  const { data: states } = await soth.sb().from('villages').select('distinct state');
-  const stateOpts = (states || []).map(s => `<option value="${s.state}">${s.state}</option>`).join('');
+  let stateNames = (window.SOTH_LGD?.states || []).map(s => s.name).filter(Boolean);
+  if (!stateNames.length) {
+    const { data: states } = await soth.sb().from('villages').select('state').limit(10000);
+    stateNames = [...new Set((states || []).map(s => s.state).filter(Boolean))].sort();
+  }
+  const stateOpts = stateNames.map(s => `<option value="${soth.ui.escapeHtml(s)}">${soth.ui.escapeHtml(s)}</option>`).join('');
   modal.innerHTML = `
     <div class="modal-content">
       <h3>Add Village</h3>
